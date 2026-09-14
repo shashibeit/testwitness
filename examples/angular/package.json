@@ -1,0 +1,29 @@
+{
+  "name": "testwitness-angular-example",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "ng": "ng",
+    "sdk:build": "npm --prefix ../.. run build",
+    "start": "npm run sdk:build && ng serve --host 127.0.0.1 --port 4200",
+    "build": "npm run sdk:build && ng build",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit"
+  },
+  "dependencies": {
+    "@angular/common": "^21.2.23",
+    "@angular/compiler": "^21.2.23",
+    "@angular/core": "^21.2.23",
+    "@angular/forms": "^21.2.23",
+    "@angular/platform-browser": "^21.2.23",
+    "@testwitness/core": "file:../..",
+    "rxjs": "^7.8.2",
+    "tslib": "^2.8.1",
+    "zone.js": "~0.16.0"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "^21.2.24",
+    "@angular/cli": "^21.2.24",
+    "@angular/compiler-cli": "^21.2.23",
+    "typescript": "~5.9.3"
+  }
+}

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en" ng-app="testWitnessDemo">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TestWitness — AngularJS example</title>
+    <style>
+      body {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 32px 20px 64px;
+        color: #172b3a;
+        background: #f5f8fb;
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+      }
+      main,
+      section {
+        padding: 20px;
+        background: white;
+        border: 1px solid #d7e1ea;
+        border-radius: 10px;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        margin: 20px 0;
+      }
+      button,
+      input,
+      select {
+        min-height: 38px;
+        padding: 7px 10px;
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+      .private-card {
+        margin-top: 20px;
+        background: #edf5fb;
+      }
+    </style>
+    <!-- Replace this CDN URL with your approved/self-hosted AngularJS asset in enterprise apps. -->
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.3/angular.min.js"></script>
+    <script src="../../dist/testwitness.min.js"></script>
+    <script src="./test-witness.service.js"></script>
+    <script src="./app.js"></script>
+  </head>
+  <body ng-controller="DemoController as demo">
+    <main>
+      <h1>TestWitness AngularJS integration</h1>
+      <p>Every test has a story. Capture the proof.</p>
+      <p role="status">
+        Session: <strong>{{ demo.status }}</strong> · Video:
+        <strong>{{ demo.videoStatus }}</strong>. {{ demo.message }}
+      </p>
+
+      <div class="controls" aria-label="Evidence controls">
+        <label>
+          <input
+            type="checkbox"
+            ng-model="demo.captureVideo"
+            ng-disabled="demo.busy || demo.status === 'recording' || demo.status === 'paused'"
+          />
+          Capture browser-tab video
+        </label>
+        <button
+          ng-click="demo.start()"
+          ng-disabled="demo.busy || demo.status === 'recording' || demo.status === 'paused'"
+        >
+          Start session
+        </button>
+        <button
+          ng-click="demo.pauseOrResume()"
+          ng-disabled="demo.busy || (demo.status !== 'recording' && demo.status !== 'paused')"
+        >
+          {{ demo.status === 'paused' ? 'Resume' : 'Pause' }}
+        </button>
+        <button ng-click="demo.capture()" ng-disabled="demo.busy || demo.status !== 'recording'">
+          Capture screenshot
+        </button>
+        <label>
+          Tester note
+          <input ng-model="demo.note" />
+        </label>
+        <button
+          ng-click="demo.addNote()"
+          ng-disabled="demo.busy || (demo.status !== 'recording' && demo.status !== 'paused')"
+        >
+          Add note
+        </button>
+        <label>
+          Result
+          <select
+            ng-model="demo.result"
+            ng-change="demo.selectResult()"
+            ng-disabled="demo.busy || (demo.status !== 'recording' && demo.status !== 'paused')"
+          >
+            <option value="not-set">Not set</option>
+            <option value="passed">Passed</option>
+            <option value="failed">Failed</option>
+            <option value="blocked">Blocked</option>
+          </select>
+        </label>
+        <button
+          ng-click="demo.stop()"
+          ng-disabled="demo.busy || (demo.status !== 'recording' && demo.status !== 'paused')"
+        >
+          Stop session
+        </button>
+        <button ng-click="demo.download()" ng-disabled="demo.busy || demo.status !== 'stopped'">
+          Download ZIP
+        </button>
+      </div>
+
+      <section data-private>
+        <h2>Application content</h2>
+        <label>Password <input type="password" value="never-captured" /></label>
+      </section>
+    </main>
+  </body>
+</html>

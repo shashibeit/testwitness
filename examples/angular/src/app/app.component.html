@@ -1,0 +1,256 @@
+<div class="app-shell">
+  <header class="portal-header">
+    <div>
+      <p class="eyebrow">Operations Portal</p>
+      <h1>Temporary access review</h1>
+      <p>Runnable Angular integration for capturing a realistic manual QA flow.</p>
+    </div>
+    <span class="environment">LOCAL DEMO</span>
+  </header>
+
+  <div class="privacy-notice" role="note">
+    All people, identifiers, and systems on this page are synthetic. The employee card and approval
+    PIN are deliberately protected to demonstrate screenshot masking and sensitive-field handling.
+  </div>
+
+  <main class="workspace">
+    <section class="workflow-card" aria-labelledby="request-heading">
+      <div class="section-heading">
+        <div>
+          <p class="step">QA workflow</p>
+          <h2 id="request-heading">Request application access</h2>
+        </div>
+        <span class="workflow-status" [class.success]="requestOutcome === 'success'">
+          {{ requestOutcome === 'success' ? 'Submitted' : 'Draft' }}
+        </span>
+      </div>
+
+      <article class="employee-card" data-private aria-label="Masked employee record">
+        <span class="avatar" aria-hidden="true">JL</span>
+        <div>
+          <strong>{{ employeeName }}</strong>
+          <span>{{ employeeId }} · Finance Operations</span>
+          <span>jordan.lee&#64;example.test</span>
+        </div>
+        <span class="private-tag">Masked in screenshots</span>
+      </article>
+
+      <form #accessForm="ngForm" (ngSubmit)="submitAccessRequest()">
+        <div class="field-grid">
+          <label>
+            Business system
+            <select name="systemName" data-testid="system-name" [(ngModel)]="systemName" required>
+              <option>Finance Reporting</option>
+              <option>Vendor Management</option>
+              <option>Risk Analytics</option>
+            </select>
+          </label>
+
+          <label>
+            Access level
+            <select
+              name="accessLevel"
+              data-testid="access-level"
+              [(ngModel)]="accessLevel"
+              required
+            >
+              <option>Read only</option>
+              <option>Contributor</option>
+              <option>Approver</option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          Business justification
+          <textarea
+            name="businessReason"
+            data-testid="business-reason"
+            [(ngModel)]="businessReason"
+            rows="3"
+            required
+          ></textarea>
+          <small>Normal free-text values are not recorded by the action recorder by default.</small>
+        </label>
+
+        <label>
+          Approval PIN <span class="optional">(synthetic)</span>
+          <input
+            name="approvalPin"
+            data-testid="approval-pin"
+            [(ngModel)]="approvalPin"
+            type="password"
+            inputmode="numeric"
+            autocomplete="off"
+          />
+          <small>Password-type values are never captured and are masked in screenshots.</small>
+        </label>
+
+        <label class="simulation-option" data-witness-controls>
+          <input name="simulateFailure" [(ngModel)]="simulateFailure" type="checkbox" />
+          Return a synthetic HTTP failure to exercise network and console evidence
+        </label>
+
+        <button
+          class="primary-action"
+          data-testid="submit-access-request"
+          type="submit"
+          [disabled]="submitting || accessForm.invalid"
+        >
+          {{ submitting ? 'Submitting…' : 'Submit access request' }}
+        </button>
+      </form>
+
+      <div
+        class="request-result"
+        [class.success]="requestOutcome === 'success'"
+        [class.error]="requestOutcome === 'error'"
+        role="status"
+        aria-live="polite"
+      >
+        @if (ticket) {
+          <strong>Ticket {{ ticket }}</strong>
+        }
+        <span>{{ requestMessage }}</span>
+      </div>
+    </section>
+
+    <aside class="witness-panel" data-witness-controls aria-labelledby="witness-heading">
+      <div class="section-heading">
+        <div>
+          <p class="step">Evidence controls</p>
+          <h2 id="witness-heading">TestWitness</h2>
+        </div>
+        <span class="session-pill" [attr.data-status]="sessionStatus">{{ sessionStatus }}</span>
+      </div>
+
+      <p class="helper-copy">
+        This panel demonstrates the TypeScript API. The movable Shadow DOM toolbar in the
+        bottom-right uses the same SDK instance.
+      </p>
+
+      <label class="video-option">
+        <input
+          name="captureVideo"
+          [(ngModel)]="captureVideo"
+          type="checkbox"
+          [disabled]="witnessBusy || sessionActive"
+        />
+        Ask to record this browser tab
+      </label>
+      <small class="permission-copy">
+        Video is opt-in. Starting with video opens the browser's required tab-sharing prompt.
+      </small>
+
+      <div class="control-grid">
+        <button
+          class="primary-control"
+          type="button"
+          [disabled]="witnessBusy || !initialized() || sessionActive"
+          (click)="startSession()"
+        >
+          Start session
+        </button>
+        <button type="button" [disabled]="witnessBusy || !sessionActive" (click)="pauseOrResume()">
+          {{ sessionStatus === 'paused' ? 'Resume' : 'Pause' }}
+        </button>
+        <button
+          type="button"
+          [disabled]="witnessBusy || sessionStatus !== 'recording'"
+          (click)="captureScreenshot()"
+        >
+          Capture screenshot
+        </button>
+      </div>
+
+      <label>
+        Tester note
+        <input
+          name="testerNote"
+          [(ngModel)]="note"
+          type="text"
+          autocomplete="off"
+          [disabled]="witnessBusy || !sessionActive"
+          (keyup.enter)="addNote()"
+        />
+      </label>
+      <button
+        type="button"
+        [disabled]="witnessBusy || !sessionActive || !note.trim()"
+        (click)="addNote()"
+      >
+        Add note
+      </button>
+
+      <label>
+        Session result
+        <select
+          name="sessionResult"
+          [ngModel]="summary().result"
+          [disabled]="witnessBusy || !sessionActive"
+          (ngModelChange)="selectResult($event)"
+        >
+          <option value="not-set">Not set</option>
+          <option value="passed">Passed</option>
+          <option value="failed">Failed</option>
+          <option value="blocked">Blocked</option>
+        </select>
+      </label>
+
+      <div class="control-grid final-controls">
+        <button
+          class="danger-control"
+          type="button"
+          [disabled]="witnessBusy || !sessionActive"
+          (click)="stopSession()"
+        >
+          Stop session
+        </button>
+        <button
+          type="button"
+          [disabled]="witnessBusy || sessionStatus !== 'stopped'"
+          (click)="downloadEvidence()"
+        >
+          Download ZIP
+        </button>
+      </div>
+
+      <dl class="evidence-summary">
+        <div>
+          <dt>Actions</dt>
+          <dd>{{ summary().evidence.actions }}</dd>
+        </div>
+        <div>
+          <dt>Screenshots</dt>
+          <dd>{{ summary().evidence.screenshots }}</dd>
+        </div>
+        <div>
+          <dt>Requests</dt>
+          <dd>{{ summary().evidence.networkRequests }}</dd>
+        </div>
+        <div>
+          <dt>Errors</dt>
+          <dd>{{ summary().evidence.networkErrors }}</dd>
+        </div>
+      </dl>
+
+      <p class="witness-message" role="status" aria-live="polite">{{ witnessMessage }}</p>
+
+      @if (summary().warnings.length > 0) {
+        <ul class="warning-list" aria-label="Capture warnings">
+          @for (warning of summary().warnings; track warning.timestamp + warning.code) {
+            <li>
+              <strong>{{ warning.code }}</strong
+              >: {{ warning.message }}
+            </li>
+          }
+        </ul>
+      }
+    </aside>
+  </main>
+
+  <footer>
+    Evidence stays in browser memory until this page is unloaded. Stop and download before
+    navigating away.
+  </footer>
+</div>

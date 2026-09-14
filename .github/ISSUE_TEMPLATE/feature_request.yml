@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a focused improvement to TestWitness.
+title: '[Feature]: '
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Explain the QA or developer evidence-capture need.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the public API or user experience you would expect.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Project constraints
+      options:
+        - label: The proposal can preserve framework independence in the core package.
+          required: true
+        - label: The proposal does not weaken privacy-safe defaults or mandatory redaction.
+          required: true

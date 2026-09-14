@@ -1,0 +1,21 @@
+{
+  "name": "testwitness-vanilla-example",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sdk:build": "npm --prefix ../.. run build",
+    "sdk:sync": "node ./scripts/sync-sdk.mjs",
+    "prepare:demo": "npm run sdk:build && npm run sdk:sync",
+    "dev": "npm run prepare:demo && vite --host 127.0.0.1 --port 4174",
+    "build": "npm run prepare:demo && vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4174",
+    "check": "node --check app.js && node --check vite.config.js && node --check scripts/sync-sdk.mjs && npm run build"
+  },
+  "devDependencies": {
+    "vite": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

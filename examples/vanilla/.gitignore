@@ -1,0 +1,4 @@
+dist/
+node_modules/
+public/vendor/testwitness.min.js
+public/vendor/testwitness.min.js.map

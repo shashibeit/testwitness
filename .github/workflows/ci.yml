@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  sdk:
+    name: SDK validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Use Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Test, type-check, lint, format-check, and build
+        run: npm run validate
+
+  examples:
+    name: ${{ matrix.example }} example
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example: [react, angular, vue, vanilla]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Use Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            examples/${{ matrix.example }}/package-lock.json
+      - name: Install SDK dependencies
+        run: npm ci
+      - name: Install example dependencies
+        run: npm --prefix examples/${{ matrix.example }} ci
+      - name: Build example against the local SDK
+        run: npm --prefix examples/${{ matrix.example }} run build

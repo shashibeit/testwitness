@@ -1,0 +1,399 @@
+:host {
+  display: block;
+}
+
+.app-shell {
+  min-height: 100vh;
+  color: #172b3a;
+}
+
+.portal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 34px max(24px, calc((100vw - 1180px) / 2));
+  color: #fff;
+  background: linear-gradient(125deg, #102a43 0%, #174f78 70%, #1769aa 100%);
+}
+
+.portal-header h1,
+.section-heading h2 {
+  margin: 0;
+}
+
+.portal-header h1 {
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1.15;
+}
+
+.portal-header p:last-child {
+  margin: 8px 0 0;
+  color: #dceaf5;
+}
+
+.eyebrow,
+.step {
+  margin: 0 0 5px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.eyebrow {
+  color: #b9d8ed;
+}
+
+.step {
+  color: #1769aa;
+}
+
+.environment {
+  flex: 0 0 auto;
+  padding: 7px 11px;
+  border: 1px solid rgb(255 255 255 / 45%);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.privacy-notice {
+  max-width: 1180px;
+  margin: 22px auto 0;
+  padding: 12px 15px;
+  border-left: 4px solid #1769aa;
+  background: #eaf3fb;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: 22px;
+  max-width: 1180px;
+  margin: 22px auto 0;
+  padding: 0 0 120px;
+}
+
+.workflow-card,
+.witness-panel {
+  align-self: start;
+  padding: 24px;
+  border: 1px solid #d3dfe9;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgb(16 42 67 / 8%);
+}
+
+.witness-panel {
+  position: sticky;
+  top: 18px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.section-heading h2 {
+  color: #102a43;
+  font-size: 1.35rem;
+}
+
+.workflow-status,
+.session-pill,
+.private-tag {
+  display: inline-block;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: #52667a;
+  background: #edf2f6;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.workflow-status.success,
+.session-pill[data-status='recording'] {
+  color: #176b3a;
+  background: #e2f4e8;
+}
+
+.session-pill[data-status='paused'] {
+  color: #805000;
+  background: #fff0cf;
+}
+
+.employee-card {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-bottom: 22px;
+  padding: 15px;
+  border: 1px solid #cbd9e5;
+  border-radius: 9px;
+  background: #f5f8fb;
+}
+
+.employee-card div {
+  display: grid;
+  flex: 1;
+}
+
+.employee-card span:not(.avatar, .private-tag) {
+  color: #52667a;
+  font-size: 0.85rem;
+}
+
+.avatar {
+  display: grid;
+  width: 45px;
+  height: 45px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #1769aa;
+  font-weight: 800;
+}
+
+form,
+.witness-panel {
+  display: grid;
+  gap: 15px;
+}
+
+.field-grid,
+.control-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+label {
+  display: grid;
+  gap: 5px;
+  color: #243b53;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 9px 10px;
+  color: #172b3a;
+  border: 1px solid #9fb3c5;
+  border-radius: 6px;
+  background: #fff;
+}
+
+textarea {
+  resize: vertical;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+  outline: 3px solid rgb(23 105 170 / 30%);
+  outline-offset: 2px;
+  border-color: #1769aa;
+}
+
+label small,
+.permission-copy {
+  color: #52667a;
+  font-size: 0.76rem;
+  font-weight: 400;
+}
+
+.optional {
+  color: #52667a;
+  font-weight: 400;
+}
+
+.simulation-option,
+.video-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 7px;
+  background: #f5f8fb;
+}
+
+.simulation-option input,
+.video-option input {
+  width: auto;
+  margin-top: 3px;
+}
+
+button {
+  min-height: 42px;
+  padding: 9px 12px;
+  color: #174f78;
+  border: 1px solid #9fb3c5;
+  border-radius: 6px;
+  background: #fff;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: #1769aa;
+  background: #eaf3fb;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.primary-action,
+.primary-control {
+  color: #fff;
+  border-color: #1769aa;
+  background: #1769aa;
+}
+
+.primary-action:hover:not(:disabled),
+.primary-control:hover:not(:disabled) {
+  color: #fff;
+  background: #12588f;
+}
+
+.danger-control {
+  color: #a51d2d;
+  border-color: #d8949d;
+}
+
+.request-result {
+  display: grid;
+  gap: 2px;
+  padding: 13px;
+  border: 1px solid #d3dfe9;
+  border-radius: 8px;
+  color: #52667a;
+  background: #f5f8fb;
+}
+
+.request-result.success {
+  color: #176b3a;
+  border-color: #98cfaa;
+  background: #e2f4e8;
+}
+
+.request-result.error {
+  color: #a51d2d;
+  border-color: #e0a4ac;
+  background: #fde7ea;
+}
+
+.helper-copy,
+.witness-message {
+  margin: 0;
+  color: #52667a;
+}
+
+.evidence-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 0;
+}
+
+.evidence-summary div {
+  padding: 8px 4px;
+  text-align: center;
+  border-radius: 6px;
+  background: #f5f8fb;
+}
+
+.evidence-summary dt {
+  color: #52667a;
+  font-size: 0.67rem;
+  text-transform: uppercase;
+}
+
+.evidence-summary dd {
+  margin: 0;
+  color: #102a43;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.warning-list {
+  margin: 0;
+  padding: 11px 11px 11px 28px;
+  color: #805000;
+  border-radius: 7px;
+  background: #fff0cf;
+  font-size: 0.8rem;
+}
+
+footer {
+  padding: 18px 24px;
+  color: #52667a;
+  text-align: center;
+  border-top: 1px solid #d3dfe9;
+  background: #fff;
+}
+
+@media (max-width: 900px) {
+  .privacy-notice,
+  .workspace {
+    margin-right: 18px;
+    margin-left: 18px;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .witness-panel {
+    position: static;
+    grid-row: 1;
+  }
+}
+
+@media (max-width: 560px) {
+  .portal-header {
+    display: block;
+    padding: 26px 18px;
+  }
+
+  .environment {
+    margin-top: 16px;
+  }
+
+  .workflow-card,
+  .witness-panel {
+    padding: 18px;
+  }
+
+  .field-grid,
+  .control-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-card {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .private-tag {
+    margin-left: 58px;
+  }
+}

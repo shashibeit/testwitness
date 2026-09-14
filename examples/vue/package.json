@@ -1,0 +1,23 @@
+{
+  "name": "testwitness-vue-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "sdk:build": "npm --prefix ../.. run build",
+    "dev": "npm run sdk:build && vite --force",
+    "build": "npm run sdk:build && vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@testwitness/core": "file:../..",
+    "vue": "^3.5.21"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0",
+    "vue-tsc": "^3.0.8"
+  }
+}
