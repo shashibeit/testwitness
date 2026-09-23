@@ -36,7 +36,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src tests vite.config.ts vitest.config.ts eslint.config.js",
+    "lint": "eslint src tests examples/vanilla/app.js examples/vanilla/demo-api.js examples/vanilla/templates.js examples/vanilla/vite.config.js examples/vanilla/scripts/check-style-parity.mjs examples/vanilla/scripts/sync-sdk.mjs vite.config.ts vitest.config.ts eslint.config.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "validate": "npm run test && npm run typecheck && npm run lint && npm run format:check && npm run build",

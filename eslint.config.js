@@ -30,9 +30,18 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.js'],
+    files: ['**/*.{js,mjs}'],
     languageOptions: {
       globals: globals.node,
+    },
+  },
+  {
+    files: ['examples/vanilla/**/*.js'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
     },
   },
   eslintConfigPrettier,

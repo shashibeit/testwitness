@@ -156,8 +156,11 @@ npm install
 npm run dev
 ```
 
-Open the URL printed by the server. This example loads the IIFE bundle with a `<script>` tag and
-uses `window.TestWitness.TestWitness`; the host application does not need a bundler.
+Open <http://127.0.0.1:4174/login>. The framework-free Operations Portal intentionally mirrors the
+React demo's five pages, responsive layout, Fetch/XHR scenarios, privacy markers, and floating
+toolbar. It loads the IIFE bundle with a `<script>` tag and uses
+`window.TestWitness.TestWitness`; the host application does not need a framework or SDK module
+import.
 
 For an existing static or server-rendered application:
 

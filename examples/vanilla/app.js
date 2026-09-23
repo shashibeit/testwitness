@@ -1,755 +1,527 @@
-(() => {
-  'use strict';
+import { createAccessRequest, createAccount, signIn, updateProfile } from './demo-api.js';
+import { pageTitle, renderApplication, updateIntegrationIndicators } from './templates.js';
 
-  const byId = (id) => document.getElementById(id);
-  const ui = {
-    application: byId('application'),
-    start: byId('start-session'),
-    captureVideo: byId('capture-video'),
-    pause: byId('pause-session'),
-    screenshot: byId('capture-screenshot'),
-    screenshotLabel: byId('screenshot-label'),
-    note: byId('tester-note'),
-    addNote: byId('add-note'),
-    result: byId('session-result'),
-    stop: byId('stop-session'),
-    download: byId('download-evidence'),
-    status: byId('session-status'),
-    duration: byId('duration'),
-    videoStatus: byId('video-status'),
-    screenshotCount: byId('screenshot-count'),
-    actionCount: byId('action-count'),
-    message: byId('operation-message'),
-    warnings: byId('warning-list'),
+const KNOWN_ROUTES = new Set(['/login', '/signup', '/dashboard', '/access-request', '/profile']);
+const PROTECTED_ROUTES = new Set(['/dashboard', '/access-request', '/profile']);
+
+const root = document.getElementById('root');
+if (!(root instanceof HTMLElement)) {
+  throw new Error('The vanilla demo root element was not found.');
+}
+
+function defaultExpiryDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + 30);
+  return date.toISOString().slice(0, 10);
+}
+
+function createLoginForm() {
+  return {
+    email: 'qa.tester@example.test',
+    password: 'DemoOnly!123',
+    simulateFailure: false,
   };
+}
 
-  const requiredElements = Object.entries(ui).filter(
-    ([, element]) => !(element instanceof Element),
-  );
-  if (requiredElements.length > 0) {
-    throw new Error(`Demo markup is missing: ${requiredElements.map(([name]) => name).join(', ')}`);
-  }
+function createSignupForm() {
+  return {
+    name: 'Jordan Lee',
+    email: 'jordan.lee@example.test',
+    department: 'Quality Engineering',
+    password: 'DemoOnly!123',
+    confirmation: 'DemoOnly!123',
+    termsAccepted: false,
+  };
+}
 
-  const state = {
+function createAccessForm() {
+  return {
+    application: 'Payments Console',
+    accessLevel: 'Read only',
+    expiresOn: defaultExpiryDate(),
+    justification: 'Validate the release candidate and confirm the regression suite.',
+    customerReference: 'CUSTOMER-002845',
+    policyConfirmed: false,
+    simulateFailure: false,
+  };
+}
+
+function createProfileForm(displayName = 'Alex Morgan') {
+  return {
+    displayName,
+    phone: '312-555-0142',
+    timeZone: 'America/Chicago',
+    notificationsEnabled: true,
+    simulateFailure: false,
+  };
+}
+
+const state = {
+  user: undefined,
+  dashboardRange: '7-days',
+  signupCreatedUser: undefined,
+  integration: {
     ready: false,
-    busy: false,
-    dashboardRange: '30 days',
-    signedIn: false,
-    flash: undefined,
+    status: 'idle',
+    summary: undefined,
+    error: undefined,
+  },
+  messages: {
+    login: undefined,
+    signup: undefined,
+    access: undefined,
+    profile: undefined,
+  },
+  forms: {
+    login: createLoginForm(),
+    signup: createSignupForm(),
+    access: createAccessForm(),
+    profile: createProfileForm(),
+  },
+};
+
+let witness;
+let removeSummaryListener = () => undefined;
+let requestGeneration = 0;
+let teardownStarted = false;
+let activeRoute;
+
+function routeFromLocation() {
+  return KNOWN_ROUTES.has(window.location.pathname) ? window.location.pathname : '/login';
+}
+
+function replaceLocation(route) {
+  window.history.replaceState({ route }, '', route);
+}
+
+function resetRouteState(route) {
+  if (route === '/login') {
+    state.forms.login = createLoginForm();
+    state.messages.login = undefined;
+  } else if (route === '/signup') {
+    state.forms.signup = createSignupForm();
+    state.messages.signup = undefined;
+    state.signupCreatedUser = undefined;
+  } else if (route === '/dashboard') {
+    state.dashboardRange = '7-days';
+  } else if (route === '/access-request') {
+    state.forms.access = createAccessForm();
+    state.messages.access = undefined;
+  } else if (route === '/profile') {
+    state.forms.profile = createProfileForm(state.user?.name);
+    state.messages.profile = undefined;
+  }
+}
+
+function focusAfterRender(selector) {
+  window.requestAnimationFrame(() => {
+    const target = root.querySelector(selector);
+    if (!(target instanceof HTMLElement)) return;
+    if (!target.matches('a, button, input, select, textarea, [tabindex]')) target.tabIndex = -1;
+    target.focus({ preventScroll: true });
+  });
+}
+
+function renderRoute({ focus = false, focusSelector } = {}) {
+  requestGeneration += 1;
+  let route = routeFromLocation();
+
+  if (window.location.pathname !== route) replaceLocation(route);
+  if (PROTECTED_ROUTES.has(route) && !state.user) {
+    route = '/login';
+    replaceLocation(route);
+  }
+
+  if (activeRoute && activeRoute !== route) resetRouteState(activeRoute);
+  activeRoute = route;
+
+  document.title = `${pageTitle(route)} · Operations Portal`;
+  root.innerHTML = renderApplication(route, state);
+  updateIntegrationIndicators(root, state.integration);
+
+  if (focusSelector) focusAfterRender(focusSelector);
+  else if (focus) focusAfterRender('#application-content');
+}
+
+function navigate(route, replace = false) {
+  if (!KNOWN_ROUTES.has(route)) return;
+  if (replace) window.history.replaceState({ route }, '', route);
+  else window.history.pushState({ route }, '', route);
+  renderRoute({ focus: true });
+}
+
+function beginRequest() {
+  requestGeneration += 1;
+  return requestGeneration;
+}
+
+function requestIsCurrent(generation) {
+  return generation === requestGeneration;
+}
+
+function formValue(formData, name) {
+  const value = formData.get(name);
+  return typeof value === 'string' ? value : '';
+}
+
+function setFormBusy(form, testId, busy, busyLabel, idleLabel) {
+  form.toggleAttribute('aria-busy', busy);
+  const button = form.querySelector(`[data-testid="${testId}"]`);
+  if (button instanceof HTMLButtonElement) {
+    button.disabled = busy;
+    button.textContent = busy ? busyLabel : idleLabel;
+  }
+}
+
+async function handleLogin(form) {
+  const formData = new FormData(form);
+  state.forms.login = {
+    email: formValue(formData, 'email'),
+    password: formValue(formData, 'password'),
+    simulateFailure: formData.has('simulateFailure'),
   };
+  state.messages.login = undefined;
+  setFormBusy(form, 'sign-in', true, 'Signing in…', 'Sign in');
+  const generation = beginRequest();
 
-  let witness;
-  let latestSummary;
-  let removeSummaryListener = () => undefined;
-  let removeWarningListener = () => undefined;
-  let durationTimer;
-  let teardownStarted = false;
-
-  function escapeHtml(value) {
-    return String(value)
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#039;');
-  }
-
-  function currentRoute() {
-    const route = window.location.hash.replace(/^#\/?/, '');
-    return ['login', 'signup', 'dashboard', 'access-request'].includes(route) ? route : 'login';
-  }
-
-  function navigate(route) {
-    const nextHash = `#/${route}`;
-    if (window.location.hash === nextHash) renderRoute();
-    else window.location.hash = nextHash;
-  }
-
-  function setFlash(kind, message) {
-    state.flash = { kind, message };
-  }
-
-  function flashMarkup() {
-    if (!state.flash) return '';
-    const flash = state.flash;
-    state.flash = undefined;
-    return `<div class="app-alert ${escapeHtml(flash.kind)}" role="status">${escapeHtml(
-      flash.message,
-    )}</div>`;
-  }
-
-  function loginPage() {
-    return `
-      <section class="auth-layout" aria-labelledby="login-title">
-        <div class="auth-copy">
-          <p class="eyebrow">Secure member access</p>
-          <h2 id="login-title">Welcome back</h2>
-          <p>Review benefits, recent claims, and access requests in one place.</p>
-          <ul class="feature-list">
-            <li>View account activity</li>
-            <li>Request application access</li>
-            <li>Manage notification preferences</li>
-          </ul>
-        </div>
-        <form id="login-form" class="form-card">
-          <div>
-            <p class="eyebrow">Demo scenario</p>
-            <h3>Sign in to your account</h3>
-          </div>
-          ${flashMarkup()}
-          <label for="login-email">Work email</label>
-          <input
-            id="login-email"
-            name="email"
-            type="email"
-            data-testid="login-email"
-            autocomplete="username"
-            value="qa.tester@example.test"
-            required
-          />
-          <label for="login-password">Password</label>
-          <input
-            id="login-password"
-            name="password"
-            type="password"
-            data-testid="login-password"
-            autocomplete="current-password"
-            value="DemoOnly!123"
-            required
-          />
-          <label class="check-row compact" for="remember-me">
-            <input id="remember-me" name="remember" type="checkbox" />
-            <span>Remember this browser</span>
-          </label>
-          <label class="check-row helper-option" for="fail-login" data-demo-helper>
-            <input id="fail-login" name="failLogin" type="checkbox" />
-            <span>
-              <strong>QA: return HTTP 401</strong>
-              <small>Creates a failed Fetch request and console error for the evidence report.</small>
-            </span>
-          </label>
-          <button class="button primary wide" type="submit">Sign in</button>
-          <p class="form-footer">New here? <a href="#/signup">Create an account</a>.</p>
-        </form>
-      </section>`;
-  }
-
-  function signupPage() {
-    return `
-      <section class="content-page narrow" aria-labelledby="signup-title">
-        <div class="page-heading">
-          <div>
-            <p class="eyebrow">New member</p>
-            <h2 id="signup-title">Create your account</h2>
-            <p>All values in this local demo must be synthetic.</p>
-          </div>
-          <a class="text-link" href="#/login">Back to login</a>
-        </div>
-        ${flashMarkup()}
-        <form id="signup-form" class="form-card two-column-form">
-          <div class="field-span">
-            <h3>Account information</h3>
-          </div>
-          <div>
-            <label for="signup-first-name">First name</label>
-            <input id="signup-first-name" name="firstName" value="Taylor" required />
-          </div>
-          <div>
-            <label for="signup-last-name">Last name</label>
-            <input id="signup-last-name" name="lastName" value="Tester" required />
-          </div>
-          <div class="field-span">
-            <label for="signup-email">Email</label>
-            <input
-              id="signup-email"
-              name="email"
-              type="email"
-              autocomplete="username"
-              value="taylor.tester@example.test"
-              required
-            />
-          </div>
-          <div>
-            <label for="signup-password">Password</label>
-            <input
-              id="signup-password"
-              name="password"
-              type="password"
-              autocomplete="new-password"
-              value="Synthetic!456"
-              required
-            />
-          </div>
-          <div>
-            <label for="signup-confirm-password">Confirm password</label>
-            <input
-              id="signup-confirm-password"
-              name="confirmPassword"
-              type="password"
-              autocomplete="new-password"
-              value="Synthetic!456"
-              required
-            />
-          </div>
-          <label class="check-row compact field-span" for="accept-policy">
-            <input id="accept-policy" name="acceptPolicy" type="checkbox" required />
-            <span>I accept the synthetic demo policy.</span>
-          </label>
-          <button class="button primary field-span" type="submit">Create account</button>
-        </form>
-      </section>`;
-  }
-
-  function dashboardPage() {
-    const range = escapeHtml(state.dashboardRange);
-    return `
-      <section class="content-page" aria-labelledby="dashboard-title">
-        <div class="page-heading">
-          <div>
-            <p class="eyebrow">Member overview</p>
-            <h2 id="dashboard-title">Good morning, Taylor</h2>
-            <p>Here is the synthetic account activity for the last ${range}.</p>
-          </div>
-          <button id="sign-out" class="button ghost" type="button">Sign out</button>
-        </div>
-        ${flashMarkup()}
-        <div class="filter-row" role="group" aria-label="Dashboard date range">
-          <span>Show activity for</span>
-          <button class="filter-button" type="button" data-range="7 days" aria-pressed="${
-            state.dashboardRange === '7 days'
-          }">7 days</button>
-          <button class="filter-button" type="button" data-range="30 days" aria-pressed="${
-            state.dashboardRange === '30 days'
-          }">30 days</button>
-        </div>
-        <div class="metric-grid">
-          <article class="metric-card">
-            <span>Open requests</span>
-            <strong>2</strong>
-            <small>One awaiting approval</small>
-          </article>
-          <article class="metric-card" data-private>
-            <span>Member reimbursement</span>
-            <strong>$1,284.50</strong>
-            <small>Private value masked in screenshots</small>
-          </article>
-          <article class="metric-card">
-            <span>Tasks due</span>
-            <strong>3</strong>
-            <small>Next due tomorrow</small>
-          </article>
-        </div>
-        <div class="dashboard-grid">
-          <article class="data-card">
-            <div class="card-heading">
-              <div>
-                <p class="eyebrow">Recent activity</p>
-                <h3>Requests and approvals</h3>
-              </div>
-              <a href="#/access-request">New request</a>
-            </div>
-            <ul class="activity-list">
-              <li><span class="activity-icon success">✓</span><span><strong>Analytics access approved</strong><small>Today at 9:14 AM</small></span></li>
-              <li><span class="activity-icon pending">…</span><span><strong>Claims workspace pending</strong><small>Yesterday at 3:42 PM</small></span></li>
-              <li><span class="activity-icon neutral">i</span><span><strong>Profile preferences updated</strong><small>August 28 at 11:05 AM</small></span></li>
-            </ul>
-          </article>
-          <article class="data-card qa-card" data-demo-helper>
-            <p class="eyebrow">QA-only control</p>
-            <h3>Generate observable failures</h3>
-            <p>Record a sanitized HTTP 503 and console error without leaving the demo.</p>
-            <button id="run-health-check" class="button secondary" type="button">
-              Run failing health check
-            </button>
-          </article>
-        </div>
-      </section>`;
-  }
-
-  function accessRequestPage() {
-    return `
-      <section class="content-page narrow" aria-labelledby="request-title">
-        <div class="page-heading">
-          <div>
-            <p class="eyebrow">Access management</p>
-            <h2 id="request-title">Request application access</h2>
-            <p>Submit a realistic form and capture its confirmation or failure state.</p>
-          </div>
-          <a class="text-link" href="#/dashboard">Back to dashboard</a>
-        </div>
-        ${flashMarkup()}
-        <form id="access-request-form" class="form-card two-column-form">
-          <input type="hidden" name="csrf_token" value="never-capture-this-token" />
-          <div class="field-span">
-            <label for="application-name">Application</label>
-            <select id="application-name" name="application" required>
-              <option value="">Choose an application</option>
-              <option value="claims">Claims Workspace</option>
-              <option value="analytics">Analytics Hub</option>
-              <option value="documents">Document Center</option>
-            </select>
-          </div>
-          <div>
-            <label for="access-level">Access level</label>
-            <select id="access-level" name="accessLevel" required>
-              <option value="viewer">Viewer</option>
-              <option value="contributor">Contributor</option>
-              <option value="administrator">Administrator</option>
-            </select>
-          </div>
-          <div>
-            <label for="expiration-date">Expiration date</label>
-            <input id="expiration-date" name="expirationDate" type="date" value="2026-12-31" />
-          </div>
-          <div class="field-span" data-private>
-            <label for="customer-reference">Synthetic customer reference</label>
-            <input
-              id="customer-reference"
-              name="customerReference"
-              value="DEMO-CUSTOMER-9081"
-            />
-            <small>This field is masked in screenshots via <code>privacy.maskSelectors</code>.</small>
-          </div>
-          <div class="field-span">
-            <label for="justification">Business justification</label>
-            <textarea
-              id="justification"
-              name="justification"
-              rows="4"
-              placeholder="Use synthetic information only"
-              required
-            >Validate the quarterly reporting workflow.</textarea>
-            <small>TestWitness records that this value changed, not the complete free text.</small>
-          </div>
-          <label class="check-row compact field-span" for="manager-approved">
-            <input id="manager-approved" name="managerApproved" type="checkbox" required />
-            <span>I confirm manager approval was received.</span>
-          </label>
-          <label class="check-row helper-option field-span" for="fail-request" data-demo-helper>
-            <input id="fail-request" name="failRequest" type="checkbox" />
-            <span>
-              <strong>QA: return HTTP 503</strong>
-              <small>Exercises failed-request capture while preserving normal Fetch behavior.</small>
-            </span>
-          </label>
-          <button class="button primary field-span" type="submit">Submit access request</button>
-        </form>
-      </section>`;
-  }
-
-  function renderRoute() {
-    const route = currentRoute();
-    const pageFactories = {
-      login: loginPage,
-      signup: signupPage,
-      dashboard: dashboardPage,
-      'access-request': accessRequestPage,
-    };
-    document.title = `${route.replace('-', ' ')} — Member Services`;
-    ui.application.innerHTML = pageFactories[route]();
-    ui.application.removeAttribute('aria-busy');
-    for (const link of document.querySelectorAll('[data-route]')) {
-      if (link instanceof HTMLElement) {
-        const active = link.dataset.route === route;
-        link.classList.toggle('active', active);
-        if (active) link.setAttribute('aria-current', 'page');
-        else link.removeAttribute('aria-current');
-      }
-    }
-  }
-
-  function setApplicationBusy(isBusy) {
-    ui.application.toggleAttribute('aria-busy', isBusy);
-    for (const control of ui.application.querySelectorAll('button, input, select, textarea')) {
-      if (
-        control instanceof HTMLButtonElement ||
-        control instanceof HTMLInputElement ||
-        control instanceof HTMLSelectElement ||
-        control instanceof HTMLTextAreaElement
-      ) {
-        control.disabled = isBusy;
-      }
-    }
-  }
-
-  async function requestDemoApi(path, options = {}) {
-    const response = await window.fetch(path, {
-      ...options,
-      headers: {
-        authorization: 'Bearer synthetic-demo-access-token',
-        'content-type': 'application/json',
-        'x-api-key': 'synthetic-demo-api-key',
-        ...options.headers,
-      },
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      const error = new Error(payload.message || `Request failed with HTTP ${response.status}.`);
-      error.status = response.status;
-      throw error;
-    }
-    return payload;
-  }
-
-  function formDataObject(form) {
-    return Object.fromEntries(new FormData(form).entries());
-  }
-
-  async function handleLogin(form) {
-    setApplicationBusy(true);
-    const values = formDataObject(form);
-    const fail = values.failLogin === 'on';
-    try {
-      await requestDemoApi(`/api/demo/login?fail=${fail ? '1' : '0'}&session_id=demo-secret`, {
-        method: 'POST',
-        body: JSON.stringify(values),
+  try {
+    const result = await signIn(state.forms.login);
+    if (!requestIsCurrent(generation)) return;
+    if (!result.ok) {
+      state.messages.login = result.message;
+      console.error('Portal sign-in failed', {
+        status: result.status,
+        authorization: 'Bearer synthetic-console-token',
+        password: 'synthetic-console-password',
       });
-      state.signedIn = true;
-      setFlash('success', 'Signed in successfully. The dashboard is ready for validation.');
-      navigate('dashboard');
-    } catch (error) {
-      console.error('Demo login request failed.', error);
-      setFlash('error', `Sign-in rejected: ${error.message}`);
-      renderRoute();
-    }
-  }
-
-  function handleSignup() {
-    state.signedIn = true;
-    setFlash('success', 'Synthetic account created. Password fields were not captured.');
-    navigate('dashboard');
-  }
-
-  async function handleAccessRequest(form) {
-    setApplicationBusy(true);
-    const values = formDataObject(form);
-    const fail = values.failRequest === 'on';
-    try {
-      await requestDemoApi(
-        `/api/demo/access-requests?fail=${fail ? '1' : '0'}&access_token=demo-secret`,
-        {
-          method: 'POST',
-          headers: { 'x-csrf-token': 'synthetic-demo-csrf-token' },
-          body: JSON.stringify(values),
-        },
-      );
-      setFlash('success', 'Access request AR-1042 was submitted for approval.');
-    } catch (error) {
-      console.error('Demo access request failed.', error);
-      setFlash('error', `Access request was not submitted: ${error.message}`);
-    }
-    renderRoute();
-  }
-
-  async function runFailingHealthCheck() {
-    setApplicationBusy(true);
-    try {
-      await requestDemoApi('/api/demo/health?fail=1&token=demo-secret');
-    } catch (error) {
-      console.error('Synthetic dependency health check failed.', error);
-      setFlash('error', `Expected health-check failure captured: ${error.message}`);
-    }
-    renderRoute();
-  }
-
-  ui.application.addEventListener('submit', (event) => {
-    if (!(event.target instanceof HTMLFormElement)) return;
-    event.preventDefault();
-    state.flash = undefined;
-    if (event.target.id === 'login-form') void handleLogin(event.target);
-    if (event.target.id === 'signup-form') handleSignup();
-    if (event.target.id === 'access-request-form') void handleAccessRequest(event.target);
-  });
-
-  ui.application.addEventListener('click', (event) => {
-    const target = event.target instanceof Element ? event.target.closest('button') : undefined;
-    if (!(target instanceof HTMLButtonElement)) return;
-    if (target.dataset.range) {
-      state.dashboardRange = target.dataset.range;
-      setFlash('success', `Dashboard changed to ${target.dataset.range}.`);
-      renderRoute();
-    }
-    if (target.id === 'run-health-check') void runFailingHealthCheck();
-    if (target.id === 'sign-out') {
-      state.signedIn = false;
-      setFlash(
-        'success',
-        'Signed out. The active TestWitness session continues across this route.',
-      );
-      navigate('login');
-    }
-  });
-
-  window.addEventListener('hashchange', renderRoute);
-
-  function formatDuration(durationMs) {
-    const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    return [hours, minutes, seconds]
-      .filter((_, index) => hours > 0 || index > 0)
-      .map((part) => String(part).padStart(2, '0'))
-      .join(':');
-  }
-
-  function setOperationMessage(message, kind = 'info') {
-    ui.message.textContent = message;
-    ui.message.dataset.kind = kind;
-  }
-
-  function updateControls(summary = latestSummary) {
-    if (!summary) {
-      ui.start.disabled = !state.ready || state.busy;
-      return;
-    }
-    latestSummary = summary;
-    const active = summary.status === 'recording' || summary.status === 'paused';
-    const recording = summary.status === 'recording';
-    ui.status.textContent = summary.status;
-    ui.status.dataset.status = summary.status;
-    ui.duration.textContent = formatDuration(summary.durationMs);
-    ui.videoStatus.textContent = summary.videoStatus;
-    ui.videoStatus.dataset.videoStatus = summary.videoStatus;
-    ui.screenshotCount.textContent = String(summary.evidence.screenshots);
-    ui.actionCount.textContent = String(summary.evidence.actions);
-    ui.start.disabled = !state.ready || state.busy || active;
-    ui.start.textContent = summary.status === 'stopped' ? 'Start new session' : 'Start session';
-    ui.captureVideo.disabled = state.busy || active;
-    ui.pause.disabled = state.busy || !active;
-    ui.pause.textContent = summary.status === 'paused' ? 'Resume' : 'Pause';
-    ui.screenshot.disabled = state.busy || !recording;
-    ui.screenshotLabel.disabled = state.busy || !recording;
-    ui.note.disabled = state.busy || !active;
-    ui.addNote.disabled = state.busy || !active;
-    ui.result.disabled = state.busy || !active;
-    ui.stop.disabled = state.busy || !active;
-    ui.download.disabled = state.busy || summary.status !== 'stopped';
-  }
-
-  async function run(operation) {
-    if (state.busy) return;
-    state.busy = true;
-    updateControls();
-    try {
-      await operation();
-    } catch (error) {
-      console.error('TestWitness demo operation failed.', error);
-      setOperationMessage(error instanceof Error ? error.message : String(error), 'error');
-    } finally {
-      state.busy = false;
-      if (witness) updateControls(witness.getSessionSummary());
-    }
-  }
-
-  function addWarning(warning) {
-    const item = document.createElement('li');
-    item.textContent = `${warning.code}: ${warning.message}`;
-    ui.warnings.prepend(item);
-    while (ui.warnings.children.length > 4) ui.warnings.lastElementChild?.remove();
-  }
-
-  ui.start.addEventListener('click', () => {
-    void run(async () => {
-      const captureVideo = ui.captureVideo.checked;
-      ui.result.value = 'not-set';
-      ui.warnings.replaceChildren();
-      setOperationMessage(
-        captureVideo
-          ? 'Waiting for browser permission. Choose Browser Tab and select this tab.'
-          : 'Starting screenshot, action, console, and network capture…',
-      );
-      const summary = await witness.startSession(
-        {
-          testerName: 'Vanilla demo tester',
-          testCaseId: 'VANILLA-E2E-001',
-          testCaseName: 'Member login and access request',
-          requirementId: 'REQ-MEMBER-104',
-          custom: { startingPage: currentRoute(), demoDataOnly: true },
-        },
-        { captureVideo },
-      );
-      if (captureVideo && summary.videoStatus === 'recording') {
-        setOperationMessage('Session and browser-tab video are recording.', 'success');
-      } else if (captureVideo) {
-        setOperationMessage(
-          `The evidence session is recording; video is ${summary.videoStatus}. Review the warning below.`,
-          'warning',
-        );
-      } else {
-        setOperationMessage(
-          'Session started without video. Manual screenshots are ready.',
-          'success',
-        );
-      }
-    });
-  });
-
-  ui.pause.addEventListener('click', () => {
-    void run(() => {
-      if (witness.getSessionStatus() === 'paused') {
-        witness.resumeSession();
-        setOperationMessage('Session resumed.', 'success');
-      } else {
-        witness.pauseSession();
-        setOperationMessage('Session paused. Resume before taking a screenshot.', 'warning');
-      }
-    });
-  });
-
-  ui.screenshot.addEventListener('click', () => {
-    void run(async () => {
-      const label = ui.screenshotLabel.value.trim() || `Checkpoint on ${currentRoute()}`;
-      const record = await witness.captureScreenshot(label);
-      setOperationMessage(`Screenshot captured: ${record.fileName}`, 'success');
-    });
-  });
-
-  ui.addNote.addEventListener('click', () => {
-    void run(() => {
-      const note = ui.note.value.trim();
-      if (!note) throw new Error('Enter a tester note before selecting Add note.');
-      witness.addNote(note);
-      ui.note.value = '';
-      setOperationMessage('Tester note added to the evidence timeline.', 'success');
-    });
-  });
-
-  ui.result.addEventListener('change', () => {
-    if (!witness) return;
-    const status = witness.getSessionStatus();
-    if (status === 'recording' || status === 'paused') {
-      witness.setSessionResult(ui.result.value);
-      setOperationMessage(`Session result set to ${ui.result.value}.`, 'success');
-    }
-  });
-
-  ui.stop.addEventListener('click', () => {
-    void run(async () => {
-      setOperationMessage('Stopping recorders and finalizing evidence…');
-      const result = await witness.stopSession(ui.result.value);
-      const videoMessage = result.summary.evidence.hasVideo
-        ? ' Video was finalized and included.'
-        : ' No video was included.';
-      setOperationMessage(
-        `Session stopped with ${result.summary.evidence.screenshots} screenshot(s).${videoMessage}`,
-        'success',
-      );
-    });
-  });
-
-  ui.download.addEventListener('click', () => {
-    void run(async () => {
-      const result = await witness.downloadEvidence();
-      setOperationMessage(
-        `Download started: ${result.fileName} (${Math.ceil(result.sizeBytes / 1024)} KB).`,
-        'success',
-      );
-    });
-  });
-
-  async function teardown() {
-    if (teardownStarted) return;
-    teardownStarted = true;
-    if (durationTimer !== undefined) window.clearInterval(durationTimer);
-    removeSummaryListener();
-    removeWarningListener();
-    if (witness) await witness.destroy();
-  }
-
-  window.addEventListener('pagehide', () => void teardown(), { once: true });
-
-  async function initialize() {
-    renderRoute();
-    const api = window.TestWitness;
-    if (!api || typeof api.TestWitness !== 'function') {
-      setOperationMessage(
-        'The browser bundle did not load. Run `npm run dev` from examples/vanilla.',
-        'error',
-      );
+      renderRoute({ focusSelector: '[data-testid="sign-in"]' });
       return;
     }
 
-    witness = new api.TestWitness({
-      applicationName: 'Member Services Vanilla Demo',
-      environment: 'local-qa',
-      releaseVersion: '1.0.0-demo',
-      session: {
-        testCaseId: 'VANILLA-E2E-001',
-        testCaseName: 'Member login and access request',
-        requirementId: 'REQ-MEMBER-104',
-      },
-      screenshot: {
-        enabled: true,
-        format: 'png',
-        captureOnStart: true,
-        captureOnNavigation: true,
-        captureOnError: true,
-        autoCaptureIntervalSeconds: 20,
-        maxAutomaticScreenshots: 30,
-      },
-      video: {
-        enabled: false,
-        includeAudio: false,
-        maxDurationMinutes: 10,
-      },
-      actions: {
-        enabled: true,
-        captureClicks: true,
-        captureFormSubmissions: true,
-        captureInputChanges: true,
-        captureNavigation: true,
-        captureTextInputValues: false,
-      },
-      console: { enabled: true, levels: ['warn', 'error'] },
-      network: {
-        enabled: true,
-        captureSuccessfulRequests: true,
-        captureFailedFetch: true,
-        captureFailedXhr: true,
-        captureRequestBody: false,
-        captureResponseBody: false,
-      },
-      privacy: {
-        maskSelectors: ['[data-private]'],
-        excludeSelectors: ['[data-test-witness-control-panel]', '[data-demo-helper]'],
-        sensitiveQueryParameters: ['member_id', 'customer_reference'],
-      },
-      toolbar: { enabled: false },
-      export: { includeHtmlReport: true, includeJsonReport: true },
-      memory: { warningThresholdMb: 100 },
-    });
+    state.user = result.data;
+    state.forms.profile.displayName = result.data.name;
+    state.messages.login = undefined;
+    navigate('/dashboard');
+  } catch (error) {
+    if (!requestIsCurrent(generation)) return;
+    const message = error instanceof Error ? error.message : String(error);
+    state.messages.login = message;
+    console.error('Portal sign-in request failed', { message });
+    renderRoute({ focusSelector: '[data-testid="sign-in"]' });
+  } finally {
+    if (requestIsCurrent(generation) && form.isConnected) {
+      setFormBusy(form, 'sign-in', false, 'Signing in…', 'Sign in');
+    }
+  }
+}
 
-    removeSummaryListener = witness.onSummary((summary) => updateControls(summary));
-    removeWarningListener = witness.onWarning((warning) => {
-      addWarning(warning);
-      setOperationMessage(warning.message, 'warning');
+async function handleSignup(form) {
+  const formData = new FormData(form);
+  state.forms.signup = {
+    name: formValue(formData, 'displayName'),
+    email: formValue(formData, 'email'),
+    department: formValue(formData, 'department'),
+    password: formValue(formData, 'password'),
+    confirmation: formValue(formData, 'confirmPassword'),
+    termsAccepted: formData.has('termsAccepted'),
+  };
+  state.messages.signup = undefined;
+
+  if (state.forms.signup.password !== state.forms.signup.confirmation) {
+    state.messages.signup = 'The two password values must match.';
+    renderRoute({ focusSelector: '[data-testid="create-account"]' });
+    return;
+  }
+
+  setFormBusy(form, 'create-account', true, 'Creating account…', 'Create account');
+  const generation = beginRequest();
+  try {
+    const result = await createAccount({
+      name: state.forms.signup.name,
+      email: state.forms.signup.email,
+      department: state.forms.signup.department,
+      password: state.forms.signup.password,
     });
-    await witness.initialize();
-    state.ready = true;
-    latestSummary = witness.getSessionSummary();
-    updateControls(latestSummary);
-    durationTimer = window.setInterval(() => {
-      if (witness) updateControls(witness.getSessionSummary());
-    }, 1000);
-    setOperationMessage(
-      'Ready. Start a session, then work through the demo application.',
-      'success',
+    if (!requestIsCurrent(generation)) return;
+    if (!result.ok) {
+      state.messages.signup = result.message;
+      renderRoute({ focusSelector: '[data-testid="create-account"]' });
+      return;
+    }
+    state.forms.signup.password = '';
+    state.forms.signup.confirmation = '';
+    state.signupCreatedUser = result.data;
+    renderRoute({ focusSelector: '[data-testid="continue-to-dashboard"]' });
+  } catch (error) {
+    if (!requestIsCurrent(generation)) return;
+    state.messages.signup = error instanceof Error ? error.message : String(error);
+    renderRoute({ focusSelector: '[data-testid="create-account"]' });
+  } finally {
+    if (requestIsCurrent(generation) && form.isConnected) {
+      setFormBusy(form, 'create-account', false, 'Creating account…', 'Create account');
+    }
+  }
+}
+
+async function handleAccessRequest(form) {
+  const formData = new FormData(form);
+  state.forms.access = {
+    application: formValue(formData, 'application'),
+    accessLevel: formValue(formData, 'accessLevel'),
+    expiresOn: formValue(formData, 'expiresOn'),
+    justification: formValue(formData, 'justification'),
+    customerReference: formValue(formData, 'customerReference'),
+    policyConfirmed: formData.has('policyConfirmed'),
+    simulateFailure: formData.has('simulateFailure'),
+  };
+  state.messages.access = undefined;
+  setFormBusy(form, 'submit-access-request', true, 'Submitting…', 'Submit request');
+  const generation = beginRequest();
+
+  try {
+    const result = await createAccessRequest(
+      {
+        application: state.forms.access.application,
+        accessLevel: state.forms.access.accessLevel,
+        expiresOn: state.forms.access.expiresOn,
+        justification: state.forms.access.justification,
+        customerReference: state.forms.access.customerReference,
+      },
+      state.forms.access.simulateFailure,
     );
+    if (!requestIsCurrent(generation)) return;
+    if (!result.ok) {
+      state.messages.access = { tone: 'error', text: result.message };
+      console.error('Access request submission failed', {
+        status: result.status,
+        authorization: 'Bearer synthetic-access-console-token',
+        access_token: 'synthetic-access-token',
+      });
+      renderRoute({ focusSelector: '[data-testid="submit-access-request"]' });
+      return;
+    }
+    state.messages.access = {
+      tone: 'success',
+      text: `Request ${result.data.requestId} was submitted for review.`,
+    };
+    renderRoute({ focusSelector: '[data-testid="submit-access-request"]' });
+  } catch (error) {
+    if (!requestIsCurrent(generation)) return;
+    const message = error instanceof Error ? error.message : String(error);
+    state.messages.access = { tone: 'error', text: message };
+    console.error('Access request could not be submitted', { message });
+    renderRoute({ focusSelector: '[data-testid="submit-access-request"]' });
+  } finally {
+    if (requestIsCurrent(generation) && form.isConnected) {
+      setFormBusy(form, 'submit-access-request', false, 'Submitting…', 'Submit request');
+    }
+  }
+}
+
+async function handleProfile(form) {
+  const formData = new FormData(form);
+  state.forms.profile = {
+    displayName: formValue(formData, 'displayName'),
+    phone: formValue(formData, 'phone'),
+    timeZone: formValue(formData, 'timeZone'),
+    notificationsEnabled: formData.has('notificationsEnabled'),
+    simulateFailure: formData.has('simulateFailure'),
+  };
+  state.messages.profile = undefined;
+  setFormBusy(form, 'save-profile', true, 'Saving…', 'Save profile');
+  const generation = beginRequest();
+
+  try {
+    const result = await updateProfile(
+      {
+        displayName: state.forms.profile.displayName,
+        phone: state.forms.profile.phone,
+        timeZone: state.forms.profile.timeZone,
+        notificationsEnabled: state.forms.profile.notificationsEnabled,
+      },
+      state.forms.profile.simulateFailure,
+    );
+    if (!requestIsCurrent(generation)) return;
+    if (!result.ok) {
+      state.messages.profile = { tone: 'error', text: result.message };
+      console.warn('Profile update was rejected', {
+        status: result.status,
+        'x-csrf-token': 'synthetic-profile-console-token',
+      });
+      renderRoute({ focusSelector: '[data-testid="save-profile"]' });
+      return;
+    }
+
+    state.user = { ...state.user, name: state.forms.profile.displayName };
+    state.messages.profile = {
+      tone: 'success',
+      text: 'Your profile settings were saved.',
+    };
+    renderRoute({ focusSelector: '[data-testid="save-profile"]' });
+  } catch (error) {
+    if (!requestIsCurrent(generation)) return;
+    state.messages.profile = {
+      tone: 'error',
+      text: error instanceof Error ? error.message : String(error),
+    };
+    renderRoute({ focusSelector: '[data-testid="save-profile"]' });
+  } finally {
+    if (requestIsCurrent(generation) && form.isConnected) {
+      setFormBusy(form, 'save-profile', false, 'Saving…', 'Save profile');
+    }
+  }
+}
+
+root.addEventListener('submit', (event) => {
+  if (!(event.target instanceof HTMLFormElement)) return;
+  event.preventDefault();
+  if (event.target.id === 'login-form') void handleLogin(event.target);
+  if (event.target.id === 'signup-form') void handleSignup(event.target);
+  if (event.target.id === 'access-request-form') void handleAccessRequest(event.target);
+  if (event.target.id === 'profile-form') void handleProfile(event.target);
+});
+
+root.addEventListener('click', (event) => {
+  if (!(event.target instanceof Element)) return;
+
+  const link = event.target.closest('a[data-route]');
+  if (
+    link instanceof HTMLAnchorElement &&
+    event instanceof MouseEvent &&
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey
+  ) {
+    event.preventDefault();
+    navigate(link.dataset.route ?? '/login');
+    return;
   }
 
-  function beginInitialization() {
-    void initialize().catch((error) => {
-      console.error('TestWitness failed to initialize.', error);
-      setOperationMessage(error instanceof Error ? error.message : String(error), 'error');
-    });
+  const button = event.target.closest('button');
+  if (!(button instanceof HTMLButtonElement)) return;
+
+  if (button.dataset.range === '7-days' || button.dataset.range === '30-days') {
+    state.dashboardRange = button.dataset.range;
+    renderRoute({ focusSelector: `[data-range="${button.dataset.range}"]` });
+    return;
   }
 
-  // A module script and a classic deferred vendor script do not share a guaranteed execution
-  // order. DOMContentLoaded waits for both, so starting here makes the browser global deterministic.
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', beginInitialization, { once: true });
-  } else {
-    beginInitialization();
+  if (button.id === 'continue-to-dashboard' && state.signupCreatedUser) {
+    state.user = state.signupCreatedUser;
+    state.forms.profile.displayName = state.signupCreatedUser.name;
+    state.signupCreatedUser = undefined;
+    navigate('/dashboard');
+    return;
   }
-})();
+
+  if (button.id === 'sign-out') {
+    state.user = undefined;
+    state.messages.login = undefined;
+    navigate('/login');
+  }
+});
+
+window.addEventListener('popstate', () => renderRoute({ focus: true }));
+
+function updateIntegration(summary) {
+  state.integration = {
+    ready: true,
+    status: summary.status,
+    summary,
+    error: undefined,
+  };
+  updateIntegrationIndicators(root, state.integration);
+}
+
+async function initializeTestWitness() {
+  const api = window.TestWitness;
+  if (!api || typeof api.TestWitness !== 'function') {
+    throw new Error('The browser bundle did not load. Run `npm run dev` from examples/vanilla.');
+  }
+
+  witness = new api.TestWitness({
+    applicationName: 'Operations Portal',
+    environment: 'local-demo',
+    releaseVersion: '1.0.0',
+    tester: { name: 'Manual QA tester', employeeId: 'DEMO-QA-001' },
+    session: {
+      testCaseId: 'PORTAL-E2E-001',
+      testCaseName: 'Authentication and account-management regression',
+      requirementId: 'REQ-PORTAL-1042',
+    },
+    screenshot: {
+      enabled: true,
+      format: 'png',
+      captureOnError: true,
+      captureOnStart: true,
+      captureOnNavigation: true,
+      autoCaptureIntervalSeconds: 15,
+      maxAutomaticScreenshots: 40,
+    },
+    // Video stays opt-in. The floating toolbar asks the tester before every session.
+    video: { enabled: false, includeAudio: false, maxDurationMinutes: 10 },
+    actions: {
+      enabled: true,
+      captureClicks: true,
+      captureFormSubmissions: true,
+      captureInputChanges: true,
+      captureNavigation: true,
+      captureTextInputValues: false,
+    },
+    console: { enabled: true, levels: ['warn', 'error'] },
+    network: {
+      enabled: true,
+      captureSuccessfulRequests: true,
+      captureFailedFetch: true,
+      captureFailedXhr: true,
+      captureRequestBody: false,
+      captureResponseBody: false,
+    },
+    privacy: {
+      maskSelectors: ['[data-private]'],
+      excludeSelectors: ['[data-evidence-exclude]'],
+    },
+    toolbar: { enabled: true, position: 'bottom-right' },
+    export: { includeHtmlReport: true, includeJsonReport: true },
+  });
+
+  removeSummaryListener = witness.onSummary(updateIntegration);
+  await witness.initialize();
+  updateIntegration(witness.getSessionSummary());
+}
+
+async function teardown() {
+  if (teardownStarted) return;
+  teardownStarted = true;
+  removeSummaryListener();
+  if (witness) await witness.destroy();
+}
+
+window.addEventListener('pagehide', (event) => {
+  if (event.persisted) return;
+  void teardown().catch((error) => console.error('TestWitness cleanup failed.', error));
+});
+
+function begin() {
+  renderRoute();
+  void initializeTestWitness().catch((error) => {
+    console.error('TestWitness failed to initialize.', error);
+    state.integration = {
+      ready: false,
+      status: 'idle',
+      summary: undefined,
+      error: error instanceof Error ? error.message : String(error),
+    };
+    renderRoute();
+  });
+}
+
+// The module and deferred classic bundle both finish before DOMContentLoaded, which gives the IIFE
+// a deterministic opportunity to expose window.TestWitness before the app initializes it.
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', begin, { once: true });
+} else {
+  begin();
+}

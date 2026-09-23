@@ -2,156 +2,178 @@
 
 > Every test has a story. Capture the proof.
 
-This is a runnable, framework-free application that shows how an existing browser application can
-own TestWitness controls. The demo includes login, signup, dashboard, and access-request flows,
-plus successful and failed Fetch requests, console errors, form changes, client-side navigation,
-masked content, tester notes, screenshots, optional tab video, and ZIP export.
+This example is the framework-free twin of the React Operations Portal demo. It deliberately uses
+the same login, signup, dashboard, access-request, profile-settings, responsive layout, synthetic
+API scenarios, privacy hooks, and floating Shadow DOM toolbar so teams can compare the integration
+approaches without comparing two different applications.
 
-The application loads the SDK through a normal script tag and uses
-`window.TestWitness.TestWitness`. Vite is only the local static server and mock-API host; the
-application code itself has no framework and does not import the SDK as a module.
+The application is built with browser-native DOM, History, Fetch, and XMLHttpRequest APIs. It loads
+`testwitness.min.js` through a classic script tag and calls `window.TestWitness.TestWitness`; it does
+not import React, Vue, Angular, or the SDK as an ES module. Vite is used only as the local static
+server, production bundler, and deterministic mock-API host.
 
-> Use synthetic information only. Do not enter production credentials, security tokens, customer
-> data, or other regulated information into this demo.
+## Run the demo
 
-## Prerequisites
-
-- Node.js 20.19 or newer
-- npm
-- A current Chrome, Edge, or Firefox browser
-
-Display capture must run in a secure context. `http://127.0.0.1` and `http://localhost` are treated
-as trustworthy for local development by supported browsers.
-
-## Install and run
-
-From this directory:
+From the `testwitness` repository root:
 
 ```bash
-cd testwitness/examples/vanilla
+npm install
+cd examples/vanilla
 npm install
 npm run dev
 ```
 
-Open <http://127.0.0.1:4174/#/login>.
+Open <http://127.0.0.1:4174/login>.
 
-`npm run dev` deliberately does three things:
+`npm run dev` builds the current SDK, copies `dist/testwitness.min.js` into this application's
+ignored `public/vendor/` directory, verifies stylesheet parity with React, and starts the local mock
+API server. This prevents the script-tag demo from silently using a stale global package.
 
-1. Builds the current SDK source from `../..`.
-2. Copies `../../dist/testwitness.min.js` to the application's own
-   `public/vendor/testwitness.min.js` path.
-3. Starts Vite with local mock endpoints used by the test scenarios.
+The demo credentials are synthetic:
 
-This prevents the example from silently using an old globally installed package. The copied vendor
-file is generated and ignored by Git.
-
-## First evidence session
-
-### 1. Start and choose video per session
-
-The evidence panel is on the right on desktop and above the app on smaller screens.
-
-1. Leave **Capture browser-tab video** unchecked for screenshots, actions, notes, console logs, and
-   network evidence only. This is the default and no permission dialog opens.
-2. Check it when this particular session needs video.
-3. Select **Start session**.
-4. If video is enabled, the browser opens its native permission chooser. Select **Browser Tab**,
-   select the Member Services tab, and approve **Share**. Selecting a window or entire screen is
-   rejected because this demo intentionally records browser tabs only.
-5. Check the two separate status values: session should say `recording`, and video should say
-   `recording` when sharing was approved. A session can keep recording other evidence when video is
-   `off` or `unavailable`.
-
-Video is a runtime choice:
-
-```js
-await witness.startSession(sessionMetadata, {
-  captureVideo: document.querySelector('#capture-video').checked,
-});
+```text
+Email:    qa.tester@example.test
+Password: DemoOnly!123
 ```
 
-The base configuration keeps video disabled, so every new session requires an explicit choice:
+Never enter real credentials or customer data into this demo.
 
-```js
-video: {
-  enabled: false,
-  includeAudio: false,
-  maxDurationMinutes: 10,
-}
+## First end-to-end evidence session
+
+### 1. Start from the application login page
+
+Use the floating **TestWitness** toolbar in the bottom-right corner. If it covers the part of the
+application you need, drag its **Move TestWitness toolbar** header with a mouse or touch. Keyboard
+users can focus that handle, move with the arrow keys, hold Shift for a larger step, and press Home
+or Escape to return it to the configured corner.
+
+1. Leave **Capture video** unchecked for a screenshot/log-only session, or select it when video is
+   required. It is off by default.
+2. Select **Start with video** when checked, or **Start without video** when unchecked.
+3. If video was selected, choose the current Operations Portal tab in the browser permission
+   dialog. An unchecked video option never opens that dialog.
+4. For video, confirm the persistent label says **Video: recording**. The separate evidence-session
+   status becomes `recording` in both video and no-video sessions. Its live screenshot counter should
+   change to `1 shot` after the automatic start checkpoint completes.
+
+TestWitness is running inside this application tab. If video is enabled, selecting another tab would
+change only the video source; screenshots, actions, console messages, and network failures would
+still come from this portal tab.
+
+This demo captures screenshots automatically at session start, after client-side navigation, after
+recorded errors, and every 15 seconds. Automatic triggers are coalesced and limited to 40 per
+session. **Capture screenshot** remains available for an immediate tester-selected checkpoint; the
+toolbar confirms the filename and updates its screenshot count.
+
+### 2. Capture a failed login
+
+1. Enable **Simulate an invalid login (HTTP 401)**.
+2. Select **Sign in**.
+3. Confirm that the page displays the unsuccessful-login message.
+4. Select **Capture screenshot** after the error is visible so the UI state has a deterministic
+   checkpoint.
+5. Optionally add the toolbar note `Invalid login correctly rejected`.
+
+Expected evidence:
+
+- click, checkbox-change, and form-submit actions;
+- one failed Fetch request with status `401`;
+- privacy-minimized request activity for the endpoint analysis;
+- a sanitized `console.error` entry;
+- an automatic error checkpoint unless another automatic capture is already pending (closely timed
+  triggers are intentionally coalesced), plus the manual screenshot taken after vanilla JavaScript
+  renders the error;
+- no password, Authorization header value, API-key value, token value, or request body.
+
+### 3. Complete a successful login and inspect the dashboard
+
+1. Disable the simulated failure option.
+2. Select **Sign in** again.
+3. The app moves to `/dashboard` without reloading the document.
+4. Change the **7 days / 30 days** dashboard filter.
+5. Select **Capture screenshot** in the toolbar.
+6. Add the note `Login successful and dashboard loaded`.
+
+The account metric and sidebar user card are marked `data-private`, so they are masked in the
+screenshot. The TestWitness toolbar and tester-only hints are absent from screenshots.
+
+### 4. Submit an access request
+
+1. Open **Access requests** from the application navigation.
+2. Change the application, access level, expiration date, justification, and policy checkbox.
+3. Submit the successful path.
+4. Capture a screenshot and add the note `Access request submitted successfully`.
+5. Enable the QA option and submit again to generate a controlled Fetch `503` failure.
+
+The action timeline records which controls changed, but normal text values remain disabled. The
+customer-reference field is masked in screenshots. Request and response bodies are not collected.
+
+### 5. Update the profile through XMLHttpRequest
+
+1. Open **Profile settings**.
+2. Change the display name, phone, time zone, and notification checkbox.
+3. Save the successful path and capture a screenshot.
+4. Enable the QA option and save again to generate a controlled XHR `500` failure.
+5. Add the note `Profile success and failure paths verified`.
+
+The private profile summary card is masked. The failed request should appear in
+`network-errors.json` with redacted Authorization, CSRF header, and `access_token` query values. Its
+privacy-minimized outcome also appears in `network-requests.json`.
+
+### 6. Exercise signup in the same recording
+
+1. Select **Sign out**. This uses client-side navigation, so TestWitness keeps recording.
+2. Select **Create one** on the login page.
+3. Complete the signup form and accept the policy.
+4. Capture the **Account created** confirmation before continuing to the dashboard.
+
+Both password inputs are always excluded from action values and masked in screenshots.
+
+### 7. Pause, finish, and export
+
+1. Select **Pause** in the toolbar and interact with an application control. Evidence counts should
+   not increase and video should pause when it was enabled.
+2. Select **Resume** and interact again.
+3. Choose `Passed`, `Failed`, `Blocked`, or `Not set` in the toolbar.
+4. Select **Stop session**. The browser sharing indicator should end and the toolbar should say
+   **Video: captured** when video was enabled.
+5. Select **Download evidence**.
+
+## Inspect the ZIP
+
+Extract the archive and open `report.html` directly. A video is present only when tab sharing was
+approved and recorded.
+
+### If video is missing
+
+Use the toolbar's persistent video state as the source of truth. The main session can say `recording`
+while video is off or unavailable.
+
+1. Before selecting Start, check **Capture video** so the action changes to **Start with video**.
+2. In the native chooser, select **Browser Tab**, choose this Operations Portal tab, and select
+   **Share**. An entire screen or application window is not accepted by this tab-only demo.
+3. Confirm the toolbar changes from **Video: waiting for tab permission** to **Video: recording**.
+   If it says **Video: unavailable**, inspect the toolbar warning and browser console.
+4. Run the demo through HTTPS or localhost and check browser/OS enterprise display-capture policy.
+   An embedded app also needs an appropriate `display-capture` Permissions Policy.
+5. Select **Stop session** and wait for **Video: captured** before downloading the ZIP. This wait lets
+   `MediaRecorder` deliver its final chunk. Verify that `recording.webm` is present and non-empty.
+
+If you changed or pulled SDK source, rebuild the package, restart the example dev server, and
+hard-refresh the browser tab:
+
+```bash
+# From the testwitness repository root
+npm run build
+
+# Then restart from examples/vanilla
+npm run dev
 ```
 
-The library never bypasses or pre-approves the browser chooser. Unit tests can mock media APIs, but
-real permission, enterprise policy, operating-system sharing controls, and WebM encoding require a
-manual browser test.
-
-### 2. Exercise login and navigation
-
-The prefilled values are synthetic.
-
-1. On **Login**, select **Sign in** for a successful request and navigation to the dashboard.
-2. Return to Login, enable **QA: return HTTP 401**, and sign in again to record a failed Fetch
-   request and a `console.error` entry.
-3. Visit **Sign up**, change fields, accept the policy, and submit.
-4. On **Dashboard**, switch between 7 and 30 days.
-
-Passwords are always excluded from captured values. Request and response bodies are disabled. The
-demo sends synthetic Authorization, API-key, and token values so the resulting evidence can be
-checked for redaction.
-
-### 3. Submit a realistic form
-
-1. Open **Access request**.
-2. Choose an application and access level, change the date and justification, and confirm manager
-   approval.
-3. Submit once for HTTP 201.
-4. Enable **QA: return HTTP 503** and submit again for a controlled failure.
-
-The customer-reference area is marked `data-private` and is masked in screenshots. Hidden CSRF
-fields and complete free-text input values are not captured.
-
-### 4. Capture screenshots and notes
-
-While the session status is `recording`:
-
-1. Put the application into the state that matters.
-2. Enter a meaningful **Screenshot label**.
-3. Select **Capture screenshot** and wait for the filename confirmation.
-4. Enter a tester observation and select **Add note**.
-
-The demo also enables automatic screenshots at session start, after same-document navigation, after
-captured console/network errors, and every 20 seconds. Automatic captures are capped at 30. Manual
-capture stays available until the session is paused or stopped.
-
-The whole evidence panel and QA-only failure controls use `privacy.excludeSelectors`, so they are
-temporarily excluded from generated screenshots. Private account values use
-`privacy.maskSelectors` and appear masked rather than readable.
-
-### 5. Pause and resume
-
-1. Select **Pause**. Action, console, network, screenshot, and active video capture pause together.
-2. Notice that manual screenshot capture is disabled while paused.
-3. Select **Resume**, then continue the scenario.
-
-The same button calls the synchronous session methods:
-
-```js
-if (witness.getSessionStatus() === 'paused') {
-  witness.resumeSession();
-} else {
-  witness.pauseSession();
-}
-```
-
-### 6. Stop and download
-
-1. Select `Passed`, `Failed`, `Blocked`, or `Not set`.
-2. Select **Stop session** and wait for finalization. When video was enabled, this wait allows the
-   browser to deliver its final MediaRecorder data before the ZIP becomes available.
-3. Confirm that video says `captured` and the message says video was included. If video was not
-   selected or permission failed, the rest of the evidence is still valid.
-4. Select **Download ZIP**.
-
-Extract the ZIP and open `report.html` directly. Expected files include:
+Vite can otherwise continue serving an older copied browser bundle. The automated unit
+tests mock browser media APIs and verify state/final-chunk/ZIP behavior; they do not exercise a real
+permission chooser, tab selection, enterprise browser policy, or WebM encoder. Manually run this
+flow in each supported managed browser.
 
 ```text
 report.html
@@ -161,128 +183,148 @@ console-logs.json
 network-requests.json
 network-errors.json
 notes.json
-recording.webm             # only when video was selected and captured
+recording.webm
 screenshots/
 ```
 
-Verify that the report works offline, screenshot thumbnails load, the timeline reflects the demo
-journey, failed requests appear, and sensitive headers/query parameters are redacted.
+Verify that:
 
-## Integration pattern
+- the decision summary and result, duration, browser, operating system, viewport, and page metadata
+  are correct;
+- **Session summary** and **Capture health** show the result, recorded evidence counts, warnings,
+  and video availability;
+- the **All evidence**, **Tester journey**, **Screenshots**, **Successful requests**, **Errors**,
+  **Warnings**, **Requests**, and **Notes** cards filter the chronological explorer, and each event
+  expands to show its available sanitized details;
+- the tester journey covers login, dashboard navigation, forms, and profile changes;
+- **Request and endpoint review** shows recorded total, succeeded, and failed counts plus timing and
+  status/outcome breakdowns grouped by method, origin, and sanitized path;
+- screenshots show the correct application states but not the toolbar or tester-only hints;
+- private cards and password fields are masked;
+- Fetch `401`/`503` and XHR `500` failures are present;
+- `authorization`, `x-api-key`, and `x-csrf-token` values are `[REDACTED]`; the sanitized URL may
+  display its redacted `access_token` query value as the encoded form `%5BREDACTED%5D`;
+- password values, hidden values, file values, and request/response bodies are absent;
+- notes, screenshot thumbnails, and the optional video work offline.
 
-The SDK is loaded before `app.js`:
+## How TestWitness is integrated
+
+The browser bundle is copied into the demo's normal static-asset directory and loaded before the
+application module:
 
 ```html
 <script src="/vendor/testwitness.min.js" defer></script>
-<script src="/app.js" defer></script>
+<script src="/app.js" type="module"></script>
 ```
 
-The application creates and initializes one instance:
+[`app.js`](./app.js) creates one long-lived SDK instance. Client-side History API navigation
+replaces page content but never replaces that instance, so evidence survives all five routes:
 
 ```js
 const { TestWitness } = window.TestWitness;
 
 const witness = new TestWitness({
-  applicationName: 'Member Services Vanilla Demo',
-  environment: 'local-qa',
+  applicationName: 'Operations Portal',
+  environment: 'local-demo',
   screenshot: {
     enabled: true,
     captureOnStart: true,
     captureOnNavigation: true,
     captureOnError: true,
+    autoCaptureIntervalSeconds: 15,
+    maxAutomaticScreenshots: 40,
   },
   video: { enabled: false, includeAudio: false },
+  actions: { captureTextInputValues: false },
+  network: {
+    // Demo-only opt-in for request totals and endpoint analysis; bodies remain disabled.
+    captureSuccessfulRequests: true,
+    captureFailedFetch: true,
+    captureFailedXhr: true,
+    captureRequestBody: false,
+    captureResponseBody: false,
+  },
   privacy: {
     maskSelectors: ['[data-private]'],
-    excludeSelectors: ['[data-test-witness-control-panel]', '[data-demo-helper]'],
+    excludeSelectors: ['[data-evidence-exclude]'],
   },
-  toolbar: { enabled: false },
+  toolbar: { enabled: true, position: 'bottom-right' },
 });
 
+const removeSummaryListener = witness.onSummary((summary) => {
+  document.documentElement.dataset.evidenceStatus = summary.status;
+});
 await witness.initialize();
+
+window.addEventListener('pagehide', (event) => {
+  if (!event.persisted) {
+    removeSummaryListener();
+    void witness.destroy();
+  }
+});
 ```
 
-`onSummary` drives button availability and live counts, while `onWarning` makes recoverable video,
-screenshot, recorder, and memory issues visible to the tester.
+The demo translates the React component hierarchy into small template functions in
+[`templates.js`](./templates.js). API calls live in [`demo-api.js`](./demo-api.js), including Fetch
+login/signup/access-request flows and an XMLHttpRequest profile flow. This separation is for
+readability only; every file remains plain JavaScript.
 
-The page performs safe teardown once:
+## Apply the same pattern to a real JavaScript or server-rendered application
+
+1. Build or install `@testwitness/core`, then copy `dist/testwitness.min.js` into the application's
+   controlled static-asset pipeline.
+2. Load that file through a script tag on the page that owns the QA session.
+3. Create one `window.TestWitness.TestWitness` instance in the application shell, call
+   `initialize()` once, and call `destroy()` during page cleanup.
+4. Enable the supplied toolbar or connect application-owned controls to that same instance. Never
+   create a separate instance for every route or partial-page render.
+5. Add `[data-private]` or your chosen mask selectors to customer, payment, account, and employee
+   data containers.
+6. Keep successful-request metadata, text-input values, and request/response bodies disabled unless
+   an approved test objective requires them. Successful metadata is enabled in this synthetic demo
+   to exercise the report's request and endpoint views.
+7. Start the session from the tab containing the application, and choose that same tab for video.
+8. Use normal SPA navigation so the instance remains mounted throughout the workflow.
+9. Stop and download before any hard refresh, cross-origin navigation, or full-page logout redirect.
+
+This demo uses clean History API paths such as `/login` and `/dashboard`. When deploying the demo
+to a static host, configure an SPA fallback that serves `index.html` for those paths; otherwise a
+direct visit or refresh on a nested route can return `404`. A traditional multi-page server-rendered
+application does not need this fallback, but each full document navigation ends the in-memory MVP 1
+session unless TestWitness remains in a persistent shell.
+
+For JSP, FreeMarker, Thymeleaf, or plain HTML, the initialization code can be a classic script
+instead of a module. Escape all server-rendered values for JavaScript context before placing them in
+configuration; never concatenate untrusted values into executable code.
+
+MVP 1 stores evidence only in memory. Client-side route changes are safe, but a full document reload
+destroys the session and its evidence.
+
+For custom controls instead of the supplied toolbar, make the video choice explicit per session:
 
 ```js
-const removeSummaryListener = witness.onSummary(renderSummary);
-const removeWarningListener = witness.onWarning(renderWarning);
-
-window.addEventListener(
-  'pagehide',
-  () => {
-    removeSummaryListener();
-    removeWarningListener();
-    void witness.destroy();
-  },
-  { once: true },
-);
+await witness.startSession(sessionMetadata, { captureVideo: userSelectedVideo });
 ```
 
-`destroy()` stops active media tracks, restores Fetch/XHR/console/browser-history instrumentation,
-removes listeners, and clears in-memory evidence. A destroyed instance must be initialized again
-before reuse. In most applications, create a new instance when the application shell remounts; if
-reusing the same instance, call `await witness.initialize()` again before `startSession()`.
+`captureVideo: false` never requests display permission. When omitted, the value of
+`video.enabled` is used as the programmatic default.
 
-Calling **Start new session** after a normal stop does not require `destroy()` or another
-`initialize()`, but it replaces the previous in-memory evidence. Download the completed ZIP first.
+## Local API behavior
 
-## Commands
+The example Vite configuration supplies small in-process mock endpoints for `200`, `201`, `204`,
+`401`, `409`, `500`, and `503` responses. They exist only to demonstrate realistic application
+calls, successful-request metadata, and network-error evidence. They are not part of the SDK and no
+TestWitness backend is required.
 
-Run commands from `examples/vanilla`:
+## Validate the example
 
 ```bash
-npm run dev          # build/sync the SDK, then start the demo
-npm run build        # build/sync the SDK, then create this example's dist/
-npm run preview      # serve the already-built example with mock API endpoints
-npm run sdk:build    # build only the root SDK
-npm run sdk:sync     # copy an existing root browser bundle into public/vendor
-npm run check        # syntax-check demo JS and run the production build
+npm run check
+npm run parity:check
+npm run preview
 ```
 
-After editing SDK source while the dev server is running, stop it and run `npm run dev` again. The
-SDK is a classic copied script rather than a hot-reloaded source import.
-
-## Production/server-rendered adaptation
-
-In a real plain HTML, JSP, FTL, or Thymeleaf application, copy the published IIFE artifact into the
-application's normal static-asset pipeline and reference that application-owned URL. Do not point a
-production page into this repository's `dist` directory.
-
-Your Content Security Policy must allow the bundle from its chosen `script-src` origin, downloaded
-Blob URLs where required by your policy, and screen capture under the applicable Permissions Policy.
-When embedded in an iframe, the top-level application must explicitly allow `display-capture`.
-
-## Troubleshooting
-
-### The bundle did not load
-
-- Run `npm install` in this directory.
-- Run `npm run dev`, not a generic file server.
-- Confirm `public/vendor/testwitness.min.js` was generated.
-- Hard-refresh after rebuilding the SDK.
-
-### Video is unavailable or missing from the ZIP
-
-- Enable the checkbox before starting; it cannot be turned on halfway through a session.
-- Choose **Browser Tab**, select this tab, and approve Share.
-- Keep the tab-sharing indicator active until selecting **Stop session**.
-- Wait for `Video: captured` before downloading.
-- Use localhost/HTTPS and check enterprise browser policy and OS screen-recording permissions.
-- Firefox may present a different chooser, but the selected source must still be this browser tab.
-
-### A screenshot is missing
-
-- Confirm the session is `recording`, not paused or stopped.
-- Wait for the success message and filename before changing routes or stopping.
-- Inspect capture warnings. Browser security can prevent serialization of some cross-origin images,
-  fonts, canvases, or protected content.
-- The evidence panel is intentionally absent because it is configured as an excluded selector.
-
-### The mock requests return HTML
-
-Run the demo through `npm run dev` or `npm run preview`; those commands load the example Vite config
-that supplies `/api/demo/*`. A generic static server does not include the local mock endpoints.
+`npm run check` syntax-checks every JavaScript module, rebuilds the current root SDK, copies the IIFE
+artifact, verifies that the React and vanilla visual styles remain identical, and creates a
+production build. `npm run parity:check` runs only the stylesheet guard. Stop the development server
+before starting preview because both use port `4174`.

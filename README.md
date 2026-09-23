@@ -747,8 +747,127 @@ test pass across login, signup, dashboard, access-request, and profile screens. 
 Strict Mode-safe integration is in
 [`examples/react/TestWitnessExample.tsx`](./examples/react/TestWitnessExample.tsx).
 
-The runnable example enables the built-in floating toolbar. The following is an alternative custom
-React control surface using the same framework-independent API:
+The runnable example enables the built-in floating toolbar. React can consume the same
+framework-independent API through either the browser bundle or the package's normal npm runtime
+import.
+
+#### React with the browser bundle from `index.html`
+
+React applications may use the browser IIFE instead of importing the SDK runtime through their
+bundler. This is useful when TestWitness must be added as an application-controlled static asset.
+Only load `dist/testwitness.min.js`: do **not** load `examples/vanilla/app.js`, `templates.js`, or
+`styles.css` into React. Those files implement the standalone vanilla Operations Portal and its
+`app.js` owns the page's `#root` element and History API routes, which would conflict with React.
+
+1. Build TestWitness and copy the browser bundle into the React application's public assets:
+
+   ```bash
+   npm run build
+   mkdir -p path/to/react-app/public/vendor
+   cp dist/testwitness.min.js path/to/react-app/public/vendor/testwitness.min.js
+   ```
+
+2. Load the bundle before the React entry module in the application's `index.html`. Keeping these
+   scripts in this order guarantees that the global exists before `main.tsx` runs:
+
+   ```html
+   <div id="root"></div>
+   <script src="/vendor/testwitness.min.js"></script>
+   <script type="module" src="/src/main.tsx"></script>
+   ```
+
+3. Create one long-lived instance at the application entry point rather than loading the vanilla
+   demo application. For example, `src/testWitness.ts` can own the instance:
+
+   ```ts
+   const api = window.TestWitness;
+   if (!api?.TestWitness) {
+     throw new Error('TestWitness browser bundle did not load.');
+   }
+
+   export const witness = new api.TestWitness({
+     applicationName: 'React Customer Portal',
+     environment: 'QA',
+     screenshot: {
+       enabled: true,
+       captureOnStart: true,
+       captureOnNavigation: true,
+       captureOnError: true,
+     },
+     video: { enabled: false, includeAudio: false },
+     actions: {
+       enabled: true,
+       captureClicks: true,
+       captureFormSubmissions: true,
+       captureInputChanges: true,
+       captureNavigation: true,
+       captureTextInputValues: false,
+     },
+     network: {
+       enabled: true,
+       captureFailedFetch: true,
+       captureFailedXhr: true,
+       captureRequestBody: false,
+       captureResponseBody: false,
+     },
+     privacy: {
+       maskSelectors: ['[data-private]'],
+       excludeSelectors: ['[data-evidence-exclude]'],
+     },
+     toolbar: { enabled: true, position: 'bottom-right' },
+   });
+   ```
+
+4. Initialize that singleton from `main.tsx`, then render React normally. Keeping initialization
+   outside component effects avoids React development Strict Mode creating a second instance:
+
+   ```tsx
+   import { StrictMode } from 'react';
+   import { createRoot } from 'react-dom/client';
+   import { App } from './App';
+   import { witness } from './testWitness';
+
+   const initialization = witness.initialize();
+   void initialization.catch((error: unknown) => {
+     console.error('TestWitness failed to initialize.', error);
+   });
+
+   window.addEventListener('pagehide', (event) => {
+     // A persisted page remains alive in the browser back/forward cache.
+     if (event.persisted) return;
+     void initialization
+       .catch(() => undefined)
+       .then(() => witness.destroy())
+       .catch((error: unknown) => console.error('TestWitness cleanup failed.', error));
+   });
+
+   createRoot(document.getElementById('root')!).render(
+     <StrictMode>
+       <App />
+     </StrictMode>,
+   );
+   ```
+
+For a TypeScript React project, keep `@testwitness/core` installed for its declarations and add an
+ambient global declaration such as `src/testwitness-global.d.ts`:
+
+```ts
+export {};
+
+declare global {
+  interface Window {
+    TestWitness: typeof import('@testwitness/core');
+  }
+}
+```
+
+The runtime still comes from the script tag; this import is used only by TypeScript. Plain
+JavaScript React applications need no declaration file. Components that need custom capture
+buttons can import the exported `witness` singleton or receive it through React context. The npm
+runtime import shown below remains the simpler option when changing the application's dependency
+graph is acceptable.
+
+With the npm runtime import, the following is an alternative custom React control surface:
 
 ```tsx
 import { useEffect, useRef, useState } from 'react';

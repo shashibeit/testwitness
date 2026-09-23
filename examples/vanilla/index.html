@@ -3,160 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
     <meta
       name="description"
-      content="A realistic plain-JavaScript application demonstrating TestWitness."
+      content="Operations Portal, a realistic plain-JavaScript demonstration for TestWitness."
     />
-    <title>Member Services — TestWitness vanilla demo</title>
+    <title>Sign in · Operations Portal</title>
     <link rel="stylesheet" href="/styles.css" />
     <!--
-      `npm run dev` builds the SDK and copies its IIFE browser bundle here. This is the
-      same deployment shape an FTL, JSP, Thymeleaf, or other server-rendered app can use.
+      The SDK is a classic IIFE bundle, just like it would be in an HTML, JSP, FTL,
+      or Thymeleaf application. The application itself remains framework-free.
     -->
     <script src="/vendor/testwitness.min.js" defer></script>
     <script src="/app.js" type="module"></script>
   </head>
   <body>
-    <a class="skip-link" href="#application">Skip to application</a>
-
-    <header class="site-header">
-      <a class="brand" href="#/login" aria-label="Member Services home">
-        <span class="brand-mark" aria-hidden="true">TW</span>
-        <span>
-          <strong>Member Services</strong>
-          <small>Quality-assurance sandbox</small>
-        </span>
-      </a>
-      <span class="environment-badge">Local QA</span>
-    </header>
-
-    <div class="page-shell">
-      <nav class="app-nav" aria-label="Demo application pages">
-        <a href="#/login" data-route="login">Login</a>
-        <a href="#/signup" data-route="signup">Sign up</a>
-        <a href="#/dashboard" data-route="dashboard">Dashboard</a>
-        <a href="#/access-request" data-route="access-request">Access request</a>
-      </nav>
-
-      <div class="workspace">
-        <main id="application" class="application" tabindex="-1">
-          <div class="loading-card">Loading demo application…</div>
-        </main>
-
-        <aside
-          class="witness-panel"
-          aria-labelledby="witness-title"
-          data-test-witness-control-panel
-        >
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Evidence controls</p>
-              <h1 id="witness-title">TestWitness</h1>
-              <p class="tagline">Every test has a story. Capture the proof.</p>
-            </div>
-            <span id="session-status" class="status-pill" data-status="idle">idle</span>
-          </div>
-
-          <p class="panel-intro">
-            These are application-owned controls calling the browser library directly. They are
-            excluded from screenshots.
-          </p>
-
-          <dl class="capture-stats" aria-label="Live evidence summary">
-            <div>
-              <dt>Duration</dt>
-              <dd id="duration">00:00</dd>
-            </div>
-            <div>
-              <dt>Video</dt>
-              <dd id="video-status">off</dd>
-            </div>
-            <div>
-              <dt>Screenshots</dt>
-              <dd id="screenshot-count">0</dd>
-            </div>
-            <div>
-              <dt>Actions</dt>
-              <dd id="action-count">0</dd>
-            </div>
-          </dl>
-
-          <section class="control-group" aria-labelledby="start-heading">
-            <h2 id="start-heading">1. Start</h2>
-            <label class="check-row" for="capture-video">
-              <input id="capture-video" type="checkbox" />
-              <span>
-                <strong>Capture browser-tab video</strong>
-                <small>Optional and off by default. Audio is never requested in this demo.</small>
-              </span>
-            </label>
-            <button id="start-session" class="button primary" type="button" disabled>
-              Start session
-            </button>
-            <p id="video-guidance" class="field-help">
-              When enabled, choose <strong>Browser Tab</strong>, select this tab, then approve
-              Share.
-            </p>
-          </section>
-
-          <section class="control-group" aria-labelledby="capture-heading">
-            <h2 id="capture-heading">2. Capture</h2>
-            <div class="button-row">
-              <button id="pause-session" class="button secondary" type="button" disabled>
-                Pause
-              </button>
-              <button id="capture-screenshot" class="button secondary" type="button" disabled>
-                Capture screenshot
-              </button>
-            </div>
-            <label for="screenshot-label">Screenshot label</label>
-            <input
-              id="screenshot-label"
-              type="text"
-              value="Manual checkpoint"
-              maxlength="120"
-              disabled
-            />
-            <label for="tester-note">Tester note</label>
-            <textarea
-              id="tester-note"
-              rows="3"
-              maxlength="1000"
-              placeholder="What did you validate?"
-              disabled
-            ></textarea>
-            <button id="add-note" class="button secondary" type="button" disabled>Add note</button>
-          </section>
-
-          <section class="control-group" aria-labelledby="finish-heading">
-            <h2 id="finish-heading">3. Finish</h2>
-            <label for="session-result">Test result</label>
-            <select id="session-result" disabled>
-              <option value="not-set">Not set</option>
-              <option value="passed">Passed</option>
-              <option value="failed">Failed</option>
-              <option value="blocked">Blocked</option>
-            </select>
-            <div class="button-row">
-              <button id="stop-session" class="button danger" type="button" disabled>
-                Stop session
-              </button>
-              <button id="download-evidence" class="button primary" type="button" disabled>
-                Download ZIP
-              </button>
-            </div>
-          </section>
-
-          <div id="operation-message" class="operation-message" role="status" aria-live="polite">
-            Loading TestWitness…
-          </div>
-          <ul id="warning-list" class="warning-list" aria-label="Capture warnings"></ul>
-        </aside>
-      </div>
-    </div>
-
-    <footer>
-      Synthetic demo only — never enter production credentials or customer information.
-    </footer>
+    <div id="root"></div>
   </body>
 </html>
