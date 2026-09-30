@@ -53,6 +53,8 @@ describe('resolveTestWitnessConfig', () => {
       includeAudio: false,
     });
     expect(resolved.actions.captureTextInputValues).toBe(false);
+    expect(resolved.network.captureRequestHeaders).toBe(true);
+    expect(resolved.network.captureResponseHeaders).toBe(true);
     expect(resolved.network.captureRequestBody).toBe(false);
     expect(resolved.network.captureResponseBody).toBe(false);
     expect(resolved.network.captureSuccessfulRequests).toBe(false);
@@ -262,6 +264,20 @@ describe('resolveTestWitnessConfig', () => {
         network: { captureSuccessfulRequests: 'yes' },
       } as unknown as TestWitnessConfig,
       'network.captureSuccessfulRequests',
+    );
+    expectInvalid(
+      {
+        ...minimalConfig(),
+        network: { captureRequestHeaders: 1 },
+      } as unknown as TestWitnessConfig,
+      'network.captureRequestHeaders',
+    );
+    expectInvalid(
+      {
+        ...minimalConfig(),
+        network: { captureResponseHeaders: 'true' },
+      } as unknown as TestWitnessConfig,
+      'network.captureResponseHeaders',
     );
   });
 

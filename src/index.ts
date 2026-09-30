@@ -9,7 +9,10 @@ export type {
   ActionRecord,
   ActionType,
   ConsoleLogRecord,
+  NetworkBodyCaptureInfo,
+  NetworkBodyCaptureState,
   NetworkErrorRecord,
+  NetworkExchangeDetail,
   NetworkFailureType,
   NetworkRequestOutcome,
   NetworkRequestRecord,
@@ -41,6 +44,22 @@ export { TestWitnessError } from './utils/errors';
 export type { TestWitnessErrorCode } from './utils/errors';
 export { TestWitness } from './core/TestWitness';
 export { resolveTestWitnessConfig } from './core/config';
+export {
+  ActionRecorder,
+  type ActionDataSanitizer,
+  type ActionRecorderOptions,
+} from './capture/ActionRecorder';
+export {
+  ConsoleRecorder,
+  type ConsoleRecorderOptions,
+  type ConsoleTarget,
+} from './capture/ConsoleRecorder';
+export {
+  NetworkRecorder,
+  type NetworkRecorderOptions,
+  type NetworkTarget,
+} from './capture/NetworkRecorder';
+export { DataSanitizer, REDACTED_VALUE, type DataSanitizerOptions } from './privacy/DataSanitizer';
 export {
   InMemoryEvidenceStore,
   type EvidenceSnapshot,

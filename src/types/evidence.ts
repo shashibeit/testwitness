@@ -36,9 +36,49 @@ export interface ConsoleLogRecord {
 export type NetworkFailureType = 'http-error' | 'network-error' | 'timeout' | 'abort';
 export type NetworkRequestOutcome = 'success' | NetworkFailureType;
 export type NetworkTransport = 'fetch' | 'xhr';
+export type NetworkBodyCaptureState =
+  'disabled' | 'captured' | 'empty' | 'unavailable' | 'omitted-binary' | 'truncated';
+
+export interface NetworkBodyCaptureInfo {
+  state: NetworkBodyCaptureState;
+  /** Number of source bytes read before sanitization, when known. */
+  capturedBytes?: number;
+  /** Full source size when the browser exposes it. */
+  originalBytes?: number;
+}
+
+/** Browser-visible, privacy-sanitized request/response detail shared by activity and errors. */
+export interface NetworkExchangeDetail {
+  /** Wall-clock request start. `timestamp` remains the completion time for compatibility. */
+  startedAt?: string;
+  completedAt?: string;
+  /** Sanitized page URL from which the request was observed. */
+  documentUrl?: string;
+  /** Final sanitized response URL, including redirects when exposed by the browser. */
+  responseUrl?: string;
+  statusText?: string;
+  redirected?: boolean;
+  responseType?: string;
+  requestMode?: string;
+  credentialsMode?: string;
+  cacheMode?: string;
+  redirectMode?: string;
+  timeoutMs?: number;
+  withCredentials?: boolean;
+  requestContentType?: string;
+  responseContentType?: string;
+  requestHeaders?: Record<string, string>;
+  responseHeaders?: Record<string, string>;
+  requestBodyCapture?: NetworkBodyCaptureInfo;
+  responseBodyCapture?: NetworkBodyCaptureInfo;
+  /** Present only when request-body capture was explicitly enabled. */
+  requestBody?: SanitizedValue;
+  /** Present only when response-body capture was explicitly enabled. */
+  responseBody?: SanitizedValue;
+}
 
 /** Privacy-minimized request activity used for endpoint and success/failure reporting. */
-export interface NetworkRequestRecord {
+export interface NetworkRequestRecord extends NetworkExchangeDetail {
   id: string;
   timestamp: string;
   transport: NetworkTransport;
@@ -49,7 +89,7 @@ export interface NetworkRequestRecord {
   outcome: NetworkRequestOutcome;
 }
 
-export interface NetworkErrorRecord {
+export interface NetworkErrorRecord extends NetworkExchangeDetail {
   id: string;
   timestamp: string;
   transport: NetworkTransport;
@@ -58,12 +98,6 @@ export interface NetworkErrorRecord {
   status?: number;
   durationMs: number;
   failureType: NetworkFailureType;
-  requestHeaders?: Record<string, string>;
-  responseHeaders?: Record<string, string>;
-  /** Present only when request-body capture was explicitly enabled. */
-  requestBody?: SanitizedValue;
-  /** Present only when response-body capture was explicitly enabled. */
-  responseBody?: SanitizedValue;
 }
 
 export interface ScreenshotRecord {

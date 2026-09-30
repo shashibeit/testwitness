@@ -76,13 +76,40 @@ function makeEvidence(): SessionEvidence {
     networkRequests: [
       {
         id: 'request-success-1',
+        startedAt: '2026-09-07T10:00:04.410Z',
         timestamp: '2026-09-07T10:00:04.500Z',
+        completedAt: '2026-09-07T10:00:04.500Z',
         transport: 'fetch',
         method: 'POST',
-        url: 'https://api.example.test/payments?view=summary',
+        url: 'https://api.example.test/payments?view=summary&token=%5BREDACTED%5D',
         status: 201,
+        statusText: 'Created',
         durationMs: 90,
         outcome: 'success',
+        documentUrl: 'https://qa.example.test/payments/42',
+        responseUrl: 'https://api.example.test/payments/9001',
+        redirected: false,
+        responseType: 'cors',
+        requestMode: 'cors',
+        credentialsMode: 'same-origin',
+        cacheMode: 'default',
+        redirectMode: 'follow',
+        requestContentType: 'application/json',
+        responseContentType: 'application/json',
+        requestHeaders: {
+          authorization: '[REDACTED]',
+          'content-type': 'application/json',
+          'x-correlation-id': 'corr-42',
+        },
+        responseHeaders: {
+          'content-type': 'application/json',
+          'x-api-key': '[REDACTED]',
+          'x-correlation-id': 'corr-42',
+        },
+        requestBodyCapture: { state: 'captured', capturedBytes: 55, originalBytes: 55 },
+        requestBody: { amount: 125, password: '[REDACTED]' },
+        responseBodyCapture: { state: 'captured', capturedBytes: 35, originalBytes: 35 },
+        responseBody: { id: 'payment-9001', status: 'approved' },
       },
       {
         id: 'network-1',
@@ -103,6 +130,8 @@ function makeEvidence(): SessionEvidence {
         status: 200,
         durationMs: 45,
         outcome: 'success',
+        requestBodyCapture: { state: 'disabled' },
+        responseBodyCapture: { state: 'unavailable' },
       },
     ],
     networkErrors: [
@@ -117,6 +146,8 @@ function makeEvidence(): SessionEvidence {
         failureType: 'http-error',
         requestHeaders: { authorization: '[REDACTED]' },
         responseHeaders: { 'content-type': 'application/json' },
+        requestBodyCapture: { state: 'disabled' },
+        responseBodyCapture: { state: 'captured', capturedBytes: 25, originalBytes: 25 },
         responseBody: { message: 'Unavailable' },
       },
     ],
@@ -175,17 +206,16 @@ describe('HtmlReportGenerator', () => {
     const html = new HtmlReportGenerator().generate(makeEvidence(), makeSummary(), ASSETS);
 
     expect(html).toContain('<title>TestWitness — Payments Console</title>');
-    expect(html).toContain('<h1>TestWitness Evidence Report</h1>');
+    expect(html).toContain('<h1>Approve a payment</h1>');
     expect(html).toContain('Generated offline by TestWitness 0.1.0.');
     for (const heading of [
-      'Session summary',
-      'Capture health',
-      'Tester journey',
-      'Request and endpoint review',
-      'Screenshots',
+      'Decision overview',
+      'Evidence timeline',
+      'Network inspector',
+      'Issues &amp; signals',
+      'Visual evidence',
       'Tester notes',
-      'Video recording',
-      'Metadata',
+      'Session details',
     ]) {
       expect(html).toContain(`>${heading}</h2>`);
     }
@@ -199,37 +229,54 @@ describe('HtmlReportGenerator', () => {
     expect(html).toContain('aria-label="Session screen recording"');
   });
 
-  it('provides accessible CSS-only filters for journey, successes, errors, and requests', () => {
+  it('provides five accessible CSS-only filters for journey, visuals, issues, and requests', () => {
     const html = new HtmlReportGenerator().generate(makeEvidence(), makeSummary(), ASSETS);
 
-    expect(html).toContain('for="filter-actions"');
+    expect(html).toContain('for="filter-journey"');
     expect(html).toContain('>Tester journey</span>');
-    expect(html).toContain('for="filter-successes"');
-    expect(html).toContain('>Successful requests</span><strong>2</strong>');
-    expect(html).toContain('for="filter-errors"');
-    expect(html).toContain('>Errors</span><strong>1</strong>');
+    expect(html).toContain('for="filter-visuals"');
+    expect(html).toContain('>Visual evidence</span>');
+    expect(html).toContain('for="filter-issues"');
+    expect(html).toContain('>Issues</span><strong>2</strong>');
     expect(html).toContain('for="filter-requests"');
     expect(html).toContain('>Requests</span><strong>3</strong>');
-    expect(html).toContain('#filter-successes:checked~.event-list .event:not(.is-success)');
+    expect(html).toContain('#filter-issues:checked~.event-list .event:not(.kind-issue)');
     expect(html).not.toMatch(/<script\b/iu);
   });
 
   it('groups requests by method and endpoint without duplicating detailed failures', () => {
     const html = new HtmlReportGenerator().generate(makeEvidence(), makeSummary(), ASSETS);
-    const endpointSection = html.slice(
+    const endpointOverview = html.slice(
       html.indexOf('id="endpoint-review"'),
-      html.indexOf('id="screenshots"'),
+      html.indexOf('<h3>Request log</h3>'),
     );
 
-    expect(endpointSection).toContain('<span class="method">POST</span>');
-    expect(endpointSection).toContain('<code>https://api.example.test/payments</code>');
-    expect(endpointSection).toContain('2 total · 1 succeeded · 1 failed');
-    expect(endpointSection).toContain('<span class="method">GET</span>');
-    expect(endpointSection).toContain('<code>https://api.example.test/profile</code>');
-    expect(endpointSection).not.toContain('view=summary');
+    expect(endpointOverview).toContain('<span class="method">POST</span>');
+    expect(endpointOverview).toContain('<code>https://api.example.test/payments</code>');
+    expect(endpointOverview).toContain('2 total · 1 succeeded · 1 failed');
+    expect(endpointOverview).toContain('<span class="method">GET</span>');
+    expect(endpointOverview).toContain('<code>https://api.example.test/profile</code>');
+    expect(endpointOverview).not.toContain('view=summary');
+    expect(html).toContain('payments?view=summary&amp;token=%5BREDACTED%5D');
     expect(html.match(/<span class="event-badge">Request failed<\/span>/gu)).toHaveLength(1);
     expect(html).toContain('authorization');
     expect(html).toContain('[REDACTED]');
+  });
+
+  it('shows rich successful request evidence with clear capture states and timing', () => {
+    const html = new HtmlReportGenerator().generate(makeEvidence(), makeSummary(), ASSETS);
+
+    expect(html).toContain('<h4>Request</h4>');
+    expect(html).toContain('<h4>Response</h4>');
+    expect(html).toContain('<h4>Timing &amp; correlation</h4>');
+    expect(html).toContain('Browser-visible headers');
+    expect(html).toContain('x-correlation-id');
+    expect(html).toContain('payment-9001');
+    expect(html).toContain('Captured and sanitized');
+    expect(html).toContain('Disabled by configuration');
+    expect(html).toContain('Unavailable to page JavaScript');
+    expect(html).toContain('2026-09-07T10:00:04.410Z');
+    expect(html).toContain('DNS, TCP, TLS, server processing, and transfer phases');
   });
 
   it('uses a strict static CSP and contains no scripts or external resource references', () => {
@@ -241,6 +288,21 @@ describe('HtmlReportGenerator', () => {
     expect(html).toContain(`object-src 'none'`);
     expect(html).not.toMatch(/<script\b/iu);
     expect(html).not.toMatch(/(?:src|href)="(?:https?:)?\/\//iu);
+  });
+
+  it('emits unique landmarks and valid internal navigation targets', () => {
+    const html = new HtmlReportGenerator().generate(makeEvidence(), makeSummary(), ASSETS);
+    const report = new DOMParser().parseFromString(html, 'text/html');
+    const ids = [...report.querySelectorAll<HTMLElement>('[id]')].map((element) => element.id);
+
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(report.querySelectorAll('.request-card')).toHaveLength(3);
+    expect(report.querySelectorAll('.request-grid')).toHaveLength(3);
+    for (const anchor of report.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')) {
+      const target = anchor.getAttribute('href')?.slice(1) ?? '';
+      expect(target, `missing target for ${anchor.outerHTML}`).not.toBe('');
+      expect(report.getElementById(target), `missing #${target}`).not.toBeNull();
+    }
   });
 
   it('escapes malicious values in text, attributes, and structured JSON', () => {

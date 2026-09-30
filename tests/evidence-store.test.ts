@@ -164,6 +164,85 @@ describe('InMemoryEvidenceStore', () => {
     expect(Object.isFrozen(snapshot.actions)).toBe(true);
   });
 
+  it('deep-clones and freezes rich nested network request details', () => {
+    const store = new InMemoryEvidenceStore();
+    const requestHeaders = {
+      authorization: '[REDACTED]',
+      'x-trace-id': 'trace-1',
+    };
+    const responseHeaders = {
+      'content-type': 'application/json',
+    };
+    const requestBodyCapture = {
+      state: 'captured' as const,
+      capturedBytes: 48,
+      originalBytes: 48,
+    };
+    const responseBodyCapture = {
+      state: 'captured' as const,
+      capturedBytes: 32,
+      originalBytes: 32,
+    };
+    const profile = { password: '[REDACTED]', displayName: 'Alex Morgan' };
+    const roles = ['qa'];
+    const result = { saved: true, access_token: '[REDACTED]' };
+    const request: NetworkRequestRecord = {
+      id: 'request-rich-1',
+      timestamp: '2026-09-07T12:00:01.000Z',
+      startedAt: '2026-09-07T12:00:00.900Z',
+      completedAt: '2026-09-07T12:00:01.000Z',
+      documentUrl: 'https://example.test/profile',
+      responseUrl: 'https://api.example.test/profile',
+      transport: 'fetch',
+      method: 'POST',
+      url: 'https://api.example.test/profile',
+      status: 200,
+      statusText: 'OK',
+      durationMs: 100,
+      outcome: 'success',
+      requestHeaders,
+      responseHeaders,
+      requestBodyCapture,
+      responseBodyCapture,
+      requestBody: { profile, roles },
+      responseBody: { result },
+    };
+
+    store.reset(metadata());
+    store.addNetworkRequest(request);
+
+    requestHeaders['x-trace-id'] = 'changed';
+    responseHeaders['content-type'] = 'text/plain';
+    requestBodyCapture.capturedBytes = 0;
+    responseBodyCapture.originalBytes = 0;
+    profile.displayName = 'Changed';
+    roles.push('admin');
+    result.saved = false;
+
+    const stored = store.getSnapshot().networkRequests[0];
+    expect(stored).toMatchObject({
+      requestHeaders: {
+        authorization: '[REDACTED]',
+        'x-trace-id': 'trace-1',
+      },
+      responseHeaders: { 'content-type': 'application/json' },
+      requestBodyCapture: { state: 'captured', capturedBytes: 48, originalBytes: 48 },
+      responseBodyCapture: { state: 'captured', capturedBytes: 32, originalBytes: 32 },
+      requestBody: {
+        profile: { password: '[REDACTED]', displayName: 'Alex Morgan' },
+        roles: ['qa'],
+      },
+      responseBody: { result: { saved: true, access_token: '[REDACTED]' } },
+    });
+    expect(Object.isFrozen(stored)).toBe(true);
+    expect(Object.isFrozen(stored?.requestHeaders)).toBe(true);
+    expect(Object.isFrozen(stored?.responseHeaders)).toBe(true);
+    expect(Object.isFrozen(stored?.requestBodyCapture)).toBe(true);
+    expect(Object.isFrozen(stored?.responseBodyCapture)).toBe(true);
+    expect(Object.isFrozen(stored?.requestBody)).toBe(true);
+    expect(Object.isFrozen(stored?.responseBody)).toBe(true);
+  });
+
   it('emits one warning per reset after crossing the threshold', () => {
     const initialMetadata = metadata();
     const metadataBytes = new TextEncoder().encode(JSON.stringify(initialMetadata)).byteLength;

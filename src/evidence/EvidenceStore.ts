@@ -97,6 +97,8 @@ function cloneNetworkError(record: NetworkErrorRecord): NetworkErrorRecord {
     ...record,
     requestHeaders: cloneStringRecord(record.requestHeaders),
     responseHeaders: cloneStringRecord(record.responseHeaders),
+    requestBodyCapture: record.requestBodyCapture ? { ...record.requestBodyCapture } : undefined,
+    responseBodyCapture: record.responseBodyCapture ? { ...record.responseBodyCapture } : undefined,
     requestBody:
       record.requestBody === undefined ? undefined : cloneSanitizedValue(record.requestBody),
     responseBody:
@@ -105,7 +107,17 @@ function cloneNetworkError(record: NetworkErrorRecord): NetworkErrorRecord {
 }
 
 function cloneNetworkRequest(record: NetworkRequestRecord): NetworkRequestRecord {
-  return { ...record };
+  return {
+    ...record,
+    requestHeaders: cloneStringRecord(record.requestHeaders),
+    responseHeaders: cloneStringRecord(record.responseHeaders),
+    requestBodyCapture: record.requestBodyCapture ? { ...record.requestBodyCapture } : undefined,
+    responseBodyCapture: record.responseBodyCapture ? { ...record.responseBodyCapture } : undefined,
+    requestBody:
+      record.requestBody === undefined ? undefined : cloneSanitizedValue(record.requestBody),
+    responseBody:
+      record.responseBody === undefined ? undefined : cloneSanitizedValue(record.responseBody),
+  };
 }
 
 function cloneNote(record: NoteRecord): NoteRecord {

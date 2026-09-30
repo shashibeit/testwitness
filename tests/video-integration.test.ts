@@ -144,7 +144,7 @@ describe('video evidence integration', () => {
 
     expect(recording?.byteLength).toBeGreaterThan(0);
     expect(new TextDecoder().decode(recording)).toBe('integration-video-bytes');
-    expect(report).toContain('<span>Video</span><strong>Captured</strong>');
+    expect(report).toContain('<span class="header-chip">Captured video</span>');
     expect(report).toContain('src="recording.webm"');
   });
 });

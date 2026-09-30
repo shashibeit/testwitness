@@ -55,7 +55,13 @@ export interface TestWitnessConfig {
     captureSuccessfulRequests?: boolean;
     captureFailedFetch?: boolean;
     captureFailedXhr?: boolean;
+    /** Captures browser-visible, sanitized request headers. Defaults to true. */
+    captureRequestHeaders?: boolean;
+    /** Captures browser-visible, sanitized response headers. Defaults to true. */
+    captureResponseHeaders?: boolean;
+    /** High-risk opt-in. Captured values are bounded and sanitized. Defaults to false. */
     captureRequestBody?: boolean;
+    /** High-risk opt-in. Captured values are bounded and sanitized. Defaults to false. */
     captureResponseBody?: boolean;
   };
   privacy?: {
@@ -126,6 +132,8 @@ export interface ResolvedTestWitnessConfig {
     captureSuccessfulRequests: boolean;
     captureFailedFetch: boolean;
     captureFailedXhr: boolean;
+    captureRequestHeaders: boolean;
+    captureResponseHeaders: boolean;
     captureRequestBody: boolean;
     captureResponseBody: boolean;
   };

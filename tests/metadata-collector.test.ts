@@ -43,6 +43,8 @@ const CONFIG: ResolvedTestWitnessConfig = {
     captureSuccessfulRequests: false,
     captureFailedFetch: true,
     captureFailedXhr: true,
+    captureRequestHeaders: true,
+    captureResponseHeaders: true,
     captureRequestBody: false,
     captureResponseBody: false,
   },

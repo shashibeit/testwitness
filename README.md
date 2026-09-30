@@ -2,7 +2,7 @@
 
 > **Every test has a story. Capture the proof.**
 
-TestWitness is a framework-independent browser library for collecting evidence during manual QA sessions. It records tester actions, selected console output, failed `fetch` and `XMLHttpRequest` calls, optional privacy-minimized successful request metadata, notes, DOM-rendered screenshots, optional browser-tab video, and browser/session metadata. When testing is complete, it creates a client-side ZIP with structured JSON evidence and a self-contained offline HTML report.
+TestWitness is a framework-independent browser library for collecting evidence during manual QA sessions. It records tester actions, selected console output, failed `fetch` and `XMLHttpRequest` calls, optional sanitized successful request exchanges, notes, DOM-rendered screenshots, optional browser-tab video, and browser/session metadata. When testing is complete, it creates a client-side ZIP with structured JSON evidence and a self-contained offline HTML report.
 
 MVP 1 runs entirely in the browser. It does not upload evidence and does not require a backend.
 
@@ -337,6 +337,8 @@ interface TestWitnessConfig {
     captureSuccessfulRequests?: boolean;
     captureFailedFetch?: boolean;
     captureFailedXhr?: boolean;
+    captureRequestHeaders?: boolean;
+    captureResponseHeaders?: boolean;
     captureRequestBody?: boolean;
     captureResponseBody?: boolean;
   };
@@ -387,9 +389,11 @@ interface TestWitnessConfig {
 | `console.enabled`                       | `true`                                     | Patches only selected methods during an active session.                                                       |
 | `console.levels`                        | `['warn', 'error']`                        | Entries must be `warn` or `error`; duplicates are removed.                                                    |
 | `network.enabled`                       | `true`                                     | Master page-level Fetch/XHR instrumentation switch.                                                           |
-| `network.captureSuccessfulRequests`     | `false`                                    | Opt in to privacy-minimized successful endpoint metadata for request counts and report analysis.              |
+| `network.captureSuccessfulRequests`     | `false`                                    | Opt in to sanitized successful exchange metadata for complete request counts and report analysis.             |
 | `network.captureFailedFetch`            | `true`                                     | Records rejected requests and HTTP 400–599 responses.                                                         |
 | `network.captureFailedXhr`              | `true`                                     | Records error, timeout, abort, and HTTP 400–599 outcomes.                                                     |
+| `network.captureRequestHeaders`         | `true`                                     | Captures browser-visible request headers after mandatory and configured redaction.                            |
+| `network.captureResponseHeaders`        | `true`                                     | Captures browser-visible response headers after mandatory and configured redaction.                           |
 | `network.captureRequestBody`            | `false`                                    | High-risk opt-in; body evidence is bounded and sanitized.                                                     |
 | `network.captureResponseBody`           | `false`                                    | High-risk opt-in; body evidence is bounded and sanitized.                                                     |
 | `toolbar.enabled`                       | `false`                                    | Mounts a Shadow DOM Web Component when enabled.                                                               |
@@ -419,6 +423,8 @@ const witness = new TestWitness({
   },
   network: {
     captureSuccessfulRequests: false,
+    captureRequestHeaders: true,
+    captureResponseHeaders: true,
     captureRequestBody: false,
     captureResponseBody: false,
   },
@@ -529,7 +535,7 @@ A shared internal hub avoids stacking duplicate wrappers on the same console tar
 
 ### Network requests and failures
 
-TestWitness instruments page-level `window.fetch` and `XMLHttpRequest` only while a session is active. Failed-request capture is enabled by default. Set `network.captureSuccessfulRequests: true` when a reviewed test environment also needs request totals, successful outcomes, and an endpoint summary in the report. Successful-request capture stores only privacy-minimized metadata: transport, method, sanitized URL, status, duration, timestamp, and outcome. It does not enable request or response bodies.
+TestWitness instruments page-level `window.fetch` and `XMLHttpRequest` only while a session is active. Failed-request capture is enabled by default. Set `network.captureSuccessfulRequests: true` when a reviewed test environment also needs successful outcomes, complete request totals, and endpoint analysis. This option records the same sanitized exchange metadata for successful calls that is available for captured failures; it does not enable body capture.
 
 The recorder can collect:
 
@@ -537,17 +543,60 @@ The recorder can collect:
 - Rejected `fetch` requests, categorized as abort, timeout, or network error
 - XHR `error`, `timeout`, and `abort` events
 - Successful Fetch/XHR outcomes when `captureSuccessfulRequests` is explicitly enabled
-- Method, sanitized URL, status when available, duration, failure type, and sanitized visible headers
+- Start and completion time, total duration, transport, method, sanitized request URL, document URL,
+  status, status text, outcome/failure type, and an internal request ID
+- Fetch mode, credentials, cache, redirect policy, final response URL, redirect flag, and response
+  type when the browser exposes them
+- XHR timeout and `withCredentials` values when available
+- Browser-visible request and response content types and sanitized headers when their corresponding
+  header-capture options are enabled
+- Bounded, sanitized request and response payloads only when their corresponding body-capture
+  options are explicitly enabled
 
-The wrapper returns the original `fetch` promise and preserves XHR method return values. It does not convert failures into successful responses or consume the application's response body. When body capture is explicitly enabled, it reads a clone where possible and limits text reads to 64 KiB before sanitization.
+`captureRequestHeaders` and `captureResponseHeaders` default to `true`. They include only headers visible to the page-level API and pass every captured value through centralized sanitization. Authorization, cookies, API keys, CSRF/XSRF values, session IDs, and the other mandatory protected header names remain redacted even if a caller supplies a smaller `privacy.redactHeaders` list. Add application-specific secret header names to that list.
 
-Every captured failed request is also represented in the privacy-minimized request-activity data so
+Request and response bodies remain disabled by default. Enabling `captureRequestBody` or `captureResponseBody` is a high-risk, explicit opt-in that applies to both successful and failed calls selected for capture. Text reads are limited to 64 KiB before sanitization; JSON and URL-encoded values are parsed when practical so sensitive field names can be redacted recursively. Binary content is represented by metadata rather than copied into the evidence. Only enable payload capture for approved test data, and review the resulting archive before sharing it.
+
+For example, a reviewed non-production test that genuinely requires full page-visible exchange
+evidence can opt in explicitly:
+
+```ts
+network: {
+  captureSuccessfulRequests: true,
+  captureRequestHeaders: true,
+  captureResponseHeaders: true,
+  captureRequestBody: true,
+  captureResponseBody: true,
+}
+```
+
+Treat that configuration as sensitive evidence collection, not as a recommended production default.
+Configure application-specific redaction first and use synthetic accounts and payloads.
+
+The report explains body availability with these states:
+
+| Capture state                      | Meaning                                                                                         |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------- |
+| **Disabled by configuration**      | The corresponding body option was `false`; no payload was inspected or retained.                |
+| **Captured and sanitized**         | A bounded payload was available and sanitized before storage.                                   |
+| **No body**                        | The request or response had no payload.                                                         |
+| **Unavailable to page JavaScript** | The API did not expose a readable body, or cloning/reading it was not possible.                 |
+| **Binary body omitted**            | A binary payload was detected; its content was deliberately excluded.                           |
+| **Captured and truncated**         | The capture reached the 64 KiB evidence limit; only the bounded, sanitized prefix is available. |
+
+When known, the report also shows inspected and source byte counts. A missing header list similarly means no browser-visible headers were captured; it does not prove that no headers travelled over the network.
+
+The wrapper returns the original `fetch` promise and preserves XHR method return values. It clones readable bodies for evidence and does not consume or replace the application's response. Recorder errors are reported without intentionally changing the host request.
+
+Every captured failed request is also represented in the sanitized request-activity data so
 report totals agree with the error details. Failure capture still follows the corresponding
 `captureFailedFetch` or `captureFailedXhr` setting. Successful requests are omitted unless explicitly
 enabled. Endpoint summaries group by method, origin, and sanitized path; query strings are not used
 as grouping keys.
 
-The recorder does not cover WebSocket, EventSource, `navigator.sendBeacon`, requests made before the session, worker-internal requests, or calls made in another JavaScript realm such as a cross-origin iframe. Browser CORS/header rules can prevent response headers or bodies from being visible. Screenshot renderer requests are suppressed from TestWitness network evidence.
+This is page instrumentation, not a browser DevTools HAR or packet trace. Page JavaScript cannot observe every browser-generated request header, including headers added after `fetch`/XHR is called; cookies and other credential headers are not exposed to the wrapper. Browsers also hide `Set-Cookie` and CORS-disallowed response headers. Redirect chains, service-worker-internal activity, DNS lookup, TCP connection, TLS negotiation, time to first byte, and individual transfer phases are not available from this recorder. The displayed duration is the total time measured around the page-level API call, not a network-phase breakdown.
+
+The recorder does not cover WebSocket, EventSource, `navigator.sendBeacon`, requests made before the session, worker-internal requests, or calls made in another JavaScript realm such as a cross-origin iframe. Opaque responses and browser CORS/header rules can prevent response metadata or bodies from being visible. Screenshot renderer requests are suppressed from TestWitness network evidence.
 
 ## Privacy and security
 
@@ -581,8 +630,9 @@ Sanitization is defense in depth, not a data-loss-prevention guarantee. Applicat
 - Keep periodic screenshots disabled or use a reviewed interval until application-specific mask
   selectors have been verified; automatic images can capture transient visible page content.
 - Keep successful-request metadata, request/response body, and text-input capture disabled unless
-  approved and required for the test objective.
-- Add selectors and names for application-specific sensitive data.
+  approved and required for the test objective. Body capture is deliberately off by default.
+- Add selectors and names for application-specific sensitive data, including custom secret header
+  names before relying on header capture.
 - Review exported evidence before attaching it to tickets or sharing it.
 - Apply normal retention, access-control, encryption-at-rest, and deletion policies to ZIP files.
 - Avoid capturing production customer data without documented approval.
@@ -623,26 +673,33 @@ TestWitness-TC-1042-2026-09-08T15-42-10-123Z.zip
 
 `metadata.json` is always present. `includeHtmlReport: false` omits `report.html`;
 `includeJsonReport: false` omits the five event/note JSON files. `network-requests.json` contains the
-privacy-minimized request activity used for totals and endpoint analysis. It includes failures when
-the corresponding Fetch/XHR failure option was enabled; successful outcomes appear only when
-`network.captureSuccessfulRequests` was enabled.
+sanitized request activity used for totals, endpoint analysis, and the request inspector. It includes
+failures when the corresponding Fetch/XHR failure option was enabled; successful outcomes appear
+only when `network.captureSuccessfulRequests` was enabled. Optional header and body fields reflect
+the network capture settings and browser visibility. `network-errors.json` retains the detailed
+failure-only view for compatibility and focused diagnostics.
 Screenshot and video assets are included whenever evidence exists, independently of those report
 flags.
 
-The offline report is organized for both a quick QA decision and deeper diagnosis:
+The offline report is organized for a fast QA decision followed by progressively deeper evidence:
 
-- **Session summary** and **Capture health** present the result, duration, recorded evidence counts,
-  warnings, and video availability without making the tester scan raw events.
-- Keyboard-accessible, CSS-only filter cards switch the chronological explorer among **All
-  evidence**, **Tester journey**, **Screenshots**, **Successful requests**, **Errors**, **Warnings**,
-  **Requests**, and **Notes**.
-- The explorer combines actions, notes, screenshots, console problems, and network outcomes. Each
-  event can be expanded for its timestamp and available sanitized details.
-- **Request and endpoint review** groups privacy-minimized requests by HTTP method, origin, and path
-  with recorded total/succeeded/failed counts, average/maximum duration, status/outcome breakdowns,
-  and links back to matching explorer events. Query strings and fragments are omitted from grouping.
-- Dedicated screenshot and video areas make visual evidence easy to review, while metadata,
-  warnings, and capture-health information remain available without dominating the first view.
+- A persistent section navigation links directly to **Overview**, **Timeline**, **Network**,
+  **Issues**, **Visual evidence**, **Notes**, and **Session details**.
+- **Decision overview** leads with the tester verdict, duration, technical issue count, request
+  success rate, visual checkpoints, evidence totals, and capture-health warnings.
+- **Evidence timeline** combines actions, notes, screenshots, video events, console signals, capture
+  warnings, and network outcomes chronologically. Keyboard-accessible, CSS-only cards filter it to
+  **All evidence**, **Tester journey**, **Visual evidence**, **Issues**, or **Requests**.
+- **Network inspector** presents total/succeeded/failed counts, success rate, average and slowest
+  observed duration, then groups calls by HTTP method, origin, and path. Each request expands in
+  place into **Request**, **Response**, and **Timing & correlation** panels containing the sanitized
+  fields the browser exposed, header tables, body-capture states, byte counts, and links back to the
+  timeline. Query strings and fragments are omitted only from endpoint grouping; the captured URL
+  remains sanitized and inspectable in the request detail.
+- **Issues & signals** separates console errors, console/capture warnings, and failed requests so a
+  reviewer can move from the decision summary to the relevant evidence quickly.
+- **Visual evidence** places video context and screenshot checkpoints together. Tester notes and
+  complete environment/browser/session metadata remain dedicated sections.
 
 “Tester journey” means the captured sequence of tester activity; it does not claim that the product
 knows the expected happy path. Request totals describe what TestWitness recorded; because successful
@@ -807,6 +864,8 @@ Only load `dist/testwitness.min.js`: do **not** load `examples/vanilla/app.js`, 
        enabled: true,
        captureFailedFetch: true,
        captureFailedXhr: true,
+       captureRequestHeaders: true,
+       captureResponseHeaders: true,
        captureRequestBody: false,
        captureResponseBody: false,
      },
@@ -1145,7 +1204,10 @@ Important platform limitations alter what evidence can survive or be observed:
 
 - A full page reload/navigation destroys the in-memory session. SPA History API transitions remain in the same session.
 - Cross-origin frames and separate windows have separate JavaScript realms and are not instrumented by the parent instance.
-- Page scripts cannot see every browser request, response header, redirect detail, or service-worker-internal operation.
+- Page scripts cannot see browser-added request headers/cookies, `Set-Cookie` or other CORS-hidden
+  response headers, every redirect hop, or service-worker-internal operations. They also cannot
+  derive separate DNS, TCP, TLS, server-processing, time-to-first-byte, or transfer timings from
+  TestWitness's page-level wrappers.
 - DOM screenshots are reconstructions, not privileged browser pixels.
 - Browser extensions, download policy, storage pressure, memory pressure, and page CSP can block features.
 - Video is WebM-only in MVP 1 and may not play in all native operating-system media players. The extracted report uses browser playback and also provides a file link.
@@ -1227,9 +1289,25 @@ managed browser.
 - Cross-origin response details remain subject to browser CORS restrictions.
 
 Successful requests are intentionally absent unless `network.captureSuccessfulRequests: true` is
-configured. Enabling it adds privacy-minimized activity to `network-requests.json` and the report's
-request/endpoint views; it does not add successful requests to `network-errors.json` or enable
-bodies.
+configured. Enabling it adds sanitized activity to `network-requests.json` and the report's network
+inspector; it does not add successful requests to `network-errors.json` or enable bodies.
+
+### Request headers or payloads are missing
+
+- Confirm `captureRequestHeaders` and `captureResponseHeaders` were not disabled. Even when enabled,
+  TestWitness can store only headers visible to page JavaScript; browser-added cookies/credentials,
+  `Set-Cookie`, and CORS-hidden response headers are unavailable.
+- Request and response payloads require the separate, high-risk `captureRequestBody` and
+  `captureResponseBody` opt-ins. Both default to `false`, including when successful-request capture
+  is enabled.
+- Read the body-state badge in the network inspector. **Disabled by configuration** means the option
+  was off; **No body** is an empty payload; **Unavailable to page JavaScript** means the browser did
+  not expose a readable value; **Binary body omitted** excludes binary bytes; and **Captured and
+  truncated** means the sanitized evidence reached the 64 KiB limit.
+- Opaque responses, consumed/locked streams, unsupported body values, and CORS restrictions can
+  prevent capture. This does not change the application's original request or response.
+- Add application-specific secret names to `privacy.sensitiveFieldNames`,
+  `privacy.sensitiveQueryParameters`, and `privacy.redactHeaders` before enabling richer evidence.
 
 ### The ZIP does not download
 
@@ -1259,20 +1337,49 @@ npm run dev
 
 Available commands:
 
-| Command                    | Purpose                                                           |
-| -------------------------- | ----------------------------------------------------------------- |
-| `npm run dev`              | Start Vite in development mode.                                   |
-| `npm test`                 | Run all Vitest unit tests once in jsdom.                          |
-| `npm run test:watch`       | Run Vitest in watch mode.                                         |
-| `npm run typecheck`        | Run strict TypeScript checking without emit.                      |
-| `npm run lint`             | Lint source, tests, and build configuration.                      |
-| `npm run format`           | Format the workspace with Prettier.                               |
-| `npm run format:check`     | Verify formatting without edits.                                  |
-| `npm run clean`            | Remove `dist` and `coverage`.                                     |
-| `npm run build`            | Clean, type-check, and build all package formats/declarations.    |
-| `npm run validate`         | Test, type-check, lint, format-check, and run a production build. |
-| `npm run examples:install` | Install locked dependencies for all four runnable examples.       |
-| `npm run examples:build`   | Production-build React, Angular, Vue, and vanilla examples.       |
+| Command                           | Purpose                                                           |
+| --------------------------------- | ----------------------------------------------------------------- |
+| `npm run dev`                     | Start Vite in development mode.                                   |
+| `npm test`                        | Run all Vitest unit tests once in jsdom.                          |
+| `npm run test:watch`              | Run Vitest in watch mode.                                         |
+| `npm run typecheck`               | Run strict TypeScript checking without emit.                      |
+| `npm run lint`                    | Lint source, tests, and build configuration.                      |
+| `npm run format`                  | Format the workspace with Prettier.                               |
+| `npm run format:check`            | Verify formatting without edits.                                  |
+| `npm run clean`                   | Remove `dist` and `coverage`.                                     |
+| `npm run build`                   | Clean, type-check, and build all package formats/declarations.    |
+| `npm run validate`                | Test, type-check, lint, format-check, and run a production build. |
+| `npm run report:preview:generate` | Generate a synthetic report fixture under `.artifacts/`.          |
+| `npm run report:preview`          | Regenerate and serve the report preview at `127.0.0.1:4175`.      |
+| `npm run examples:install`        | Install locked dependencies for all four runnable examples.       |
+| `npm run examples:build`          | Production-build React, Angular, Vue, and vanilla examples.       |
+
+### Report preview
+
+Generate the deterministic synthetic evidence archive and extracted report without starting a
+server:
+
+```bash
+npm run report:preview:generate
+```
+
+Open `.artifacts/report-preview/report.html` or the convenience
+`.artifacts/report-preview/index.html` file. The command also writes the generated ZIP and its
+supporting JSON/media fixtures under `.artifacts/` so the complete offline workflow can be reviewed.
+These files are local build artifacts and are not committed.
+
+For an HTTP preview that regenerates the fixture first:
+
+```bash
+npm run report:preview
+```
+
+Then open <http://127.0.0.1:4175/>. Use this preview to review responsive layout, keyboard
+navigation, expandable request evidence, screenshot/video links, and print output. It uses synthetic
+redacted values. Its small `recording.webm` is an intentional non-playable layout placeholder, not a
+MediaRecorder recording. Real browser Fetch/XHR visibility, video permissions/playback, and
+application-specific privacy configuration still require validation in an integrated test
+application.
 
 ### Build
 
@@ -1338,7 +1445,8 @@ These utilities support testing and future adapters. The `TestWitness` coordinat
   persisted across page reloads.
 - Video recording is WebM-only and browser permission cannot be automated.
 - Page-level Fetch/XHR failures are captured by default; successful request metadata is opt-in.
-  Other transports and browser-level traffic are outside scope.
+  Other transports, browser-generated headers/cookies, CORS-hidden headers, service-worker internals,
+  redirect chains, and network-phase timing are outside scope.
 - Request/response body capture is best-effort, bounded, and deliberately disabled by default.
 - Approximate memory size is a warning mechanism, not an enforced total evidence limit.
 - Safari is not a supported MVP 1 target.

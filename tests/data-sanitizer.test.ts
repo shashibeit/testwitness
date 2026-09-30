@@ -18,6 +18,7 @@ describe('DataSanitizer', () => {
         Password: 'password-value',
         'X-Session-ID': 'session-id-value',
         'X-Company-Secret': 'company',
+        'X-Client-Secret': 'client-secret',
         Accept: 'application/json',
       }),
     ).toEqual({
@@ -30,6 +31,7 @@ describe('DataSanitizer', () => {
       'x-access-token': REDACTED_VALUE,
       'x-api-key': REDACTED_VALUE,
       'x-company-secret': REDACTED_VALUE,
+      'x-client-secret': REDACTED_VALUE,
       'x-csrf-token': REDACTED_VALUE,
       'x-session-id': REDACTED_VALUE,
     });

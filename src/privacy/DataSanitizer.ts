@@ -215,9 +215,11 @@ export class DataSanitizer {
 
     const sanitizedEntries = entries.slice(0, this.#maxEntries).map(([name, headerValue]) => {
       const normalizedName = name.trim().toLowerCase();
-      const sanitizedValue = this.#redactedHeaders.has(canonicalizeName(normalizedName))
-        ? REDACTED_VALUE
-        : this.sanitizeText(headerValue);
+      const sanitizedValue =
+        this.#redactedHeaders.has(canonicalizeName(normalizedName)) ||
+        this.isSensitiveFieldName(normalizedName)
+          ? REDACTED_VALUE
+          : this.sanitizeText(headerValue);
       return [normalizedName, sanitizedValue] as const;
     });
     return Object.fromEntries(sanitizedEntries);

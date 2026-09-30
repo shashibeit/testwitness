@@ -444,6 +444,16 @@ export function resolveTestWitnessConfig(config: TestWitnessConfig): ResolvedTes
         true,
         'network.captureFailedXhr',
       ),
+      captureRequestHeaders: booleanOrDefault(
+        network.captureRequestHeaders,
+        true,
+        'network.captureRequestHeaders',
+      ),
+      captureResponseHeaders: booleanOrDefault(
+        network.captureResponseHeaders,
+        true,
+        'network.captureResponseHeaders',
+      ),
       captureRequestBody: booleanOrDefault(
         network.captureRequestBody,
         false,

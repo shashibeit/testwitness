@@ -10,6 +10,8 @@ const BASE_CONFIG: ResolvedTestWitnessConfig['network'] = {
   captureSuccessfulRequests: false,
   captureFailedFetch: true,
   captureFailedXhr: true,
+  captureRequestHeaders: true,
+  captureResponseHeaders: true,
   captureRequestBody: false,
   captureResponseBody: false,
 };
@@ -18,10 +20,14 @@ const activeRecorders: NetworkRecorder[] = [];
 
 class FakeXMLHttpRequest extends EventTarget {
   public status = 0;
+  public statusText = '';
+  public responseURL = '';
   public responseType: XMLHttpRequestResponseType = '';
   public responseText = '';
   public responseValue: unknown = null;
   public responseHeaders = '';
+  public timeout = 0;
+  public withCredentials = false;
   public openedMethod = '';
   public openedUrl = '';
   public sentBody: Document | XMLHttpRequestBodyInit | null = null;
@@ -153,9 +159,9 @@ describe('NetworkRecorder fetch interception', () => {
     ]);
   });
 
-  it('records privacy-minimized successful fetch metadata only after explicit opt-in', async () => {
+  it('records successful fetch metadata with explicit disabled body states by default', async () => {
     const originalFetch = vi.fn(() =>
-      Promise.resolve(new Response(null, { status: 201 })),
+      Promise.resolve(new Response('response-body-not-stored', { status: 201 })),
     ) as unknown as typeof fetch;
     const target: NetworkTarget = { fetch: originalFetch };
     const records: NetworkErrorRecord[] = [];
@@ -191,7 +197,122 @@ describe('NetworkRecorder fetch interception', () => {
     ]);
     expect(requests[0]?.url).toContain('view=summary');
     expect(requests[0]?.url).not.toContain('secret');
+    expect(requests[0]?.requestBodyCapture).toEqual({ state: 'disabled' });
+    expect(requests[0]?.responseBodyCapture).toEqual({ state: 'disabled' });
+    expect(requests[0]?.requestBody).toBeUndefined();
+    expect(requests[0]?.responseBody).toBeUndefined();
     expect(JSON.stringify(requests)).not.toContain('never-stored');
+    expect(JSON.stringify(requests)).not.toContain('response-body-not-stored');
+  });
+
+  it('captures rich sanitized successful fetch evidence without consuming the host response', async () => {
+    const response = new Response(
+      JSON.stringify({ refresh_token: 'response-secret', result: 'created' }),
+      {
+        status: 201,
+        statusText: 'Created',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': 'response-api-secret',
+        },
+      },
+    );
+    const originalPromise = Promise.resolve(response);
+    const originalFetch = vi.fn(() => originalPromise) as unknown as typeof fetch;
+    const target: NetworkTarget = {
+      fetch: originalFetch,
+      location: {
+        href: 'https://portal.example.test/create?session_id=document-secret',
+      } as Location,
+    };
+    const records: NetworkErrorRecord[] = [];
+    const requests: NetworkRequestRecord[] = [];
+    const recorder = createRecorder(
+      target,
+      records,
+      {
+        captureSuccessfulRequests: true,
+        captureFailedFetch: false,
+        captureFailedXhr: false,
+        captureRequestBody: true,
+        captureResponseBody: true,
+      },
+      vi.fn(),
+      requests,
+    );
+    recorder.start();
+
+    const returnedPromise = target.fetch?.(
+      'https://api.example.test/users?access_token=url-secret&view=full',
+      {
+        method: 'post',
+        mode: 'cors',
+        credentials: 'include',
+        cache: 'no-store',
+        redirect: 'manual',
+        headers: {
+          Accept: 'application/json',
+          Authorization: 'Bearer authorization-secret',
+          'Content-Type': 'application/json',
+          'X-Client-Secret': 'client-secret-value',
+        },
+        body: JSON.stringify({ password: 'request-secret', safe: 'kept' }),
+      },
+    );
+
+    expect(returnedPromise).toBe(originalPromise);
+    expect(await returnedPromise).toBe(response);
+    await recorder.drain();
+
+    expect(records).toEqual([]);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toEqual(
+      expect.objectContaining({
+        transport: 'fetch',
+        method: 'POST',
+        status: 201,
+        statusText: 'Created',
+        outcome: 'success',
+        startedAt: '2026-09-07T18:00:00.000Z',
+        completedAt: '2026-09-07T18:00:00.000Z',
+        durationMs: 10,
+        documentUrl: 'https://portal.example.test/create?session_id=%5BREDACTED%5D',
+        responseUrl: 'https://api.example.test/users?access_token=%5BREDACTED%5D&view=full',
+        redirected: false,
+        responseType: 'default',
+        requestMode: 'cors',
+        credentialsMode: 'include',
+        cacheMode: 'no-store',
+        redirectMode: 'manual',
+        requestContentType: 'application/json',
+        responseContentType: 'application/json',
+        requestHeaders: {
+          accept: 'application/json',
+          authorization: '[REDACTED]',
+          'content-type': 'application/json',
+          'x-client-secret': '[REDACTED]',
+        },
+        responseHeaders: {
+          'content-type': 'application/json',
+          'x-api-key': '[REDACTED]',
+        },
+        requestBody: { password: '[REDACTED]', safe: 'kept' },
+        responseBody: { refresh_token: '[REDACTED]', result: 'created' },
+      }),
+    );
+    expect(requests[0]?.requestBodyCapture).toMatchObject({ state: 'captured' });
+    expect(requests[0]?.responseBodyCapture).toMatchObject({ state: 'captured' });
+    expect(JSON.stringify(requests)).not.toContain('url-secret');
+    expect(JSON.stringify(requests)).not.toContain('document-secret');
+    expect(JSON.stringify(requests)).not.toContain('authorization-secret');
+    expect(JSON.stringify(requests)).not.toContain('client-secret-value');
+    expect(JSON.stringify(requests)).not.toContain('request-secret');
+    expect(JSON.stringify(requests)).not.toContain('response-secret');
+    expect(JSON.stringify(requests)).not.toContain('response-api-secret');
+    await expect(response.json()).resolves.toEqual({
+      refresh_token: 'response-secret',
+      result: 'created',
+    });
   });
 
   it('does not turn disabled fetch failures into request activity when success capture is enabled', async () => {
@@ -272,6 +393,35 @@ describe('NetworkRecorder fetch interception', () => {
     expect(records).toEqual([]);
   });
 
+  it('does not record a fetch that completes after the session is paused', async () => {
+    let resolveResponse: ((response: Response) => void) | undefined;
+    const hostPromise = new Promise<Response>((resolve) => {
+      resolveResponse = resolve;
+    });
+    const target: NetworkTarget = {
+      fetch: vi.fn(() => hostPromise),
+    };
+    const records: NetworkErrorRecord[] = [];
+    const requests: NetworkRequestRecord[] = [];
+    const recorder = createRecorder(
+      target,
+      records,
+      { captureSuccessfulRequests: true, captureFailedXhr: false },
+      vi.fn(),
+      requests,
+    );
+    recorder.start();
+
+    const returned = target.fetch?.('https://example.test/in-flight');
+    recorder.pause();
+    resolveResponse?.(new Response(null, { status: 500 }));
+    await returned;
+    await recorder.drain();
+
+    expect(records).toEqual([]);
+    expect(requests).toEqual([]);
+  });
+
   it('captures bounded sanitized bodies only after explicit opt-in', async () => {
     const response = new Response('{"password":"response-secret","ok":true}', { status: 400 });
     const originalFetch = vi.fn(() => Promise.resolve(response)) as unknown as typeof fetch;
@@ -295,6 +445,80 @@ describe('NetworkRecorder fetch interception', () => {
     expect(serialized).not.toContain('response-secret');
     expect(records[0]?.requestBody).toBeDefined();
     expect(records[0]?.responseBody).toBeDefined();
+  });
+
+  it('marks oversized text responses as truncated and preserves the host response', async () => {
+    const body = JSON.stringify({ password: 'response-secret', padding: 'x'.repeat(70_000) });
+    const response = new Response(body, {
+      status: 200,
+      headers: {
+        'content-length': String(new TextEncoder().encode(body).byteLength),
+        'content-type': 'application/json',
+      },
+    });
+    const target: NetworkTarget = {
+      fetch: vi.fn(() => Promise.resolve(response)),
+    };
+    const requests: NetworkRequestRecord[] = [];
+    const recorder = createRecorder(
+      target,
+      [],
+      {
+        captureSuccessfulRequests: true,
+        captureFailedFetch: false,
+        captureFailedXhr: false,
+        captureResponseBody: true,
+      },
+      vi.fn(),
+      requests,
+    );
+    recorder.start();
+
+    await target.fetch?.('https://example.test/large-response');
+    await recorder.drain();
+
+    expect(requests[0]?.responseBodyCapture).toEqual({
+      state: 'truncated',
+      capturedBytes: 65_536,
+      originalBytes: new TextEncoder().encode(body).byteLength,
+    });
+    expect(JSON.stringify(requests[0]?.responseBody)).not.toContain('response-secret');
+    await expect(response.text()).resolves.toBe(body);
+  });
+
+  it('omits binary response bytes while retaining safe size metadata', async () => {
+    const response = new Response(new Uint8Array([37, 80, 68, 70]), {
+      status: 200,
+      headers: { 'content-length': '4', 'content-type': 'application/pdf' },
+    });
+    const target: NetworkTarget = {
+      fetch: vi.fn(() => Promise.resolve(response)),
+    };
+    const requests: NetworkRequestRecord[] = [];
+    const recorder = createRecorder(
+      target,
+      [],
+      {
+        captureSuccessfulRequests: true,
+        captureFailedFetch: false,
+        captureFailedXhr: false,
+        captureResponseBody: true,
+      },
+      vi.fn(),
+      requests,
+    );
+    recorder.start();
+
+    await target.fetch?.('https://example.test/document.pdf');
+    await recorder.drain();
+
+    expect(requests[0]?.responseBodyCapture).toEqual({
+      state: 'omitted-binary',
+      capturedBytes: 0,
+      originalBytes: 4,
+    });
+    expect(requests[0]?.responseBody).toBe('[BINARY OMITTED]');
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([37, 80, 68, 70]));
   });
 
   it('restores its wrapper and never clobbers a later fetch patch', () => {
@@ -396,6 +620,93 @@ describe('NetworkRecorder XMLHttpRequest interception', () => {
     expect(requests[0]?.url).not.toContain('private');
   });
 
+  it('captures rich sanitized successful XHR request and response details', () => {
+    const records: NetworkErrorRecord[] = [];
+    const requests: NetworkRequestRecord[] = [];
+    const recorder = createRecorder(
+      {
+        XMLHttpRequest: xhrConstructor(),
+        location: {
+          href: 'https://portal.example.test/profile?session_id=document-secret',
+        } as Location,
+      },
+      records,
+      {
+        captureSuccessfulRequests: true,
+        captureFailedFetch: false,
+        captureFailedXhr: false,
+        captureRequestBody: true,
+        captureResponseBody: true,
+      },
+      vi.fn(),
+      requests,
+    );
+    recorder.start();
+
+    const xhr = new FakeXMLHttpRequest();
+    xhr.open('POST', 'https://api.example.test/profile?csrf_token=request-url-secret');
+    xhr.setRequestHeader('Authorization', 'Bearer request-header-secret');
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('X-Client-Secret', 'client-secret-value');
+    xhr.timeout = 5_000;
+    xhr.withCredentials = true;
+    xhr.statusText = 'Created';
+    xhr.responseURL = 'https://api.example.test/profile?csrf_token=response-url-secret&view=full';
+    xhr.responseHeaders =
+      'Content-Type: application/json\r\nSet-Cookie: session=response-cookie-secret';
+    xhr.responseText = JSON.stringify({ access_token: 'response-secret', saved: true });
+    xhr.send(JSON.stringify({ password: 'request-secret', displayName: 'Alex Morgan' }));
+    xhr.complete(201);
+
+    expect(records).toEqual([]);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toEqual(
+      expect.objectContaining({
+        transport: 'xhr',
+        method: 'POST',
+        status: 201,
+        statusText: 'Created',
+        outcome: 'success',
+        startedAt: '2026-09-07T18:00:00.000Z',
+        completedAt: '2026-09-07T18:00:00.000Z',
+        durationMs: 10,
+        documentUrl: 'https://portal.example.test/profile?session_id=%5BREDACTED%5D',
+        responseUrl: 'https://api.example.test/profile?csrf_token=%5BREDACTED%5D&view=full',
+        responseType: 'text',
+        timeoutMs: 5_000,
+        withCredentials: true,
+        requestContentType: 'application/json',
+        responseContentType: 'application/json',
+        requestHeaders: {
+          authorization: '[REDACTED]',
+          'content-type': 'application/json',
+          'x-client-secret': '[REDACTED]',
+        },
+        responseHeaders: {
+          'content-type': 'application/json',
+          'set-cookie': '[REDACTED]',
+        },
+        requestBody: { password: '[REDACTED]', displayName: 'Alex Morgan' },
+        responseBody: { access_token: '[REDACTED]', saved: true },
+      }),
+    );
+    expect(requests[0]?.requestBodyCapture).toMatchObject({ state: 'captured' });
+    expect(requests[0]?.responseBodyCapture).toMatchObject({ state: 'captured' });
+    const serialized = JSON.stringify(requests);
+    for (const secret of [
+      'document-secret',
+      'request-url-secret',
+      'response-url-secret',
+      'request-header-secret',
+      'client-secret-value',
+      'response-cookie-secret',
+      'request-secret',
+      'response-secret',
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+  });
+
   it('records 4xx/5xx once with sanitized headers and restores prototype methods', () => {
     const constructor = xhrConstructor();
     const prototype = FakeXMLHttpRequest.prototype;
@@ -479,6 +790,13 @@ describe('NetworkRecorder XMLHttpRequest interception', () => {
     pausedXhr.open('GET', 'https://example.test/paused');
     pausedXhr.send();
     pausedXhr.complete(500);
+
+    recorder.resume();
+    const pausedBeforeCompletion = new FakeXMLHttpRequest();
+    pausedBeforeCompletion.open('GET', 'https://example.test/in-flight');
+    pausedBeforeCompletion.send();
+    recorder.pause();
+    pausedBeforeCompletion.complete(500);
 
     recorder.resume();
     const xhr = new FakeXMLHttpRequest();
