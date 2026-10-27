@@ -214,10 +214,15 @@ unsubscribeSummary();
 unsubscribeWarning();
 ```
 
-Recoverable warning codes are `VIDEO_UNAVAILABLE`, `CAPTURE_FAILED`,
-`SCREENSHOT_LIMIT_REACHED`, `MEMORY_THRESHOLD_REACHED`, and `RECORDER_ERROR`. For example,
+Core recoverable warning codes are `VIDEO_UNAVAILABLE`, `VIDEO_ENDED`, `CAPTURE_FAILED`,
+`SCREENSHOT_LIMIT_REACHED`, `MEMORY_THRESHOLD_REACHED`, and `RECORDER_ERROR`. Trusted adapters may
+add their own warning codes; the optional `source` and `severity` fields identify those warnings in
+the offline report. For example,
 rejecting the browser sharing prompt leaves the evidence session running without video and adds a
 `VIDEO_UNAVAILABLE` warning instead of discarding other evidence.
+
+Subscriber exceptions are isolated: a failing `onSummary()` or `onWarning()` listener is reported
+through the browser diagnostics hook without changing an otherwise successful SDK operation.
 
 Only one active TestWitness session is allowed on a page, even when separate `TestWitness` instances exist. A stopped instance can start another session; doing so resets its previously held evidence.
 
@@ -658,6 +663,7 @@ With default settings, a completed archive looks like:
 
 ```text
 TestWitness-TC-1042-2026-09-08T15-42-10-123Z.zip
+├── evidence-manifest.json
 ├── report.html
 ├── metadata.json
 ├── actions.json
@@ -671,7 +677,10 @@ TestWitness-TC-1042-2026-09-08T15-42-10-123Z.zip
     └── 002-form-submitted.png
 ```
 
-`metadata.json` is always present. `includeHtmlReport: false` omits `report.html`;
+`evidence-manifest.json` and `metadata.json` are always present. The versioned manifest describes
+the archive schema, producer, session, evidence counts, enabled report formats, capture-warning
+count, and media/file mappings so tools can validate an archive before consuming it.
+`includeHtmlReport: false` omits `report.html`;
 `includeJsonReport: false` omits the five event/note JSON files. `network-requests.json` contains the
 sanitized request activity used for totals, endpoint analysis, and the request inspector. It includes
 failures when the corresponding Fetch/XHR failure option was enabled; successful outcomes appear

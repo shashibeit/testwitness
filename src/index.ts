@@ -27,6 +27,7 @@ export type {
   Dimensions,
   DownloadEvidenceResult,
   EvidenceCounts,
+  KnownSessionWarningCode,
   OperatingSystemMetadata,
   SessionEvidence,
   SessionMetadata,
@@ -37,6 +38,7 @@ export type {
   SessionSummary,
   SessionWarning,
   SessionWarningCode,
+  SessionWarningSeverity,
   TestSessionResult,
   VideoCaptureStatus,
 } from './types/session';
@@ -67,6 +69,11 @@ export {
   type InMemoryEvidenceStoreOptions,
   type MemoryWarning,
 } from './evidence/EvidenceStore';
-export { EvidenceExporter, generateEvidenceFileName } from './evidence/EvidenceExporter';
+export {
+  EVIDENCE_ARCHIVE_SCHEMA_VERSION,
+  EvidenceExporter,
+  generateEvidenceFileName,
+  type EvidenceArchiveManifest,
+} from './evidence/EvidenceExporter';
 export { escapeHtml, HtmlReportGenerator } from './evidence/HtmlReportGenerator';
 export type { ReportAssetManifest } from './evidence/HtmlReportGenerator';

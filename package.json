@@ -26,7 +26,7 @@
   "files": [
     "dist",
     "README.md",
-    "examples"
+    "LICENSE"
   ],
   "sideEffects": false,
   "scripts": {
@@ -39,6 +39,7 @@
     "lint": "eslint src tests scripts examples/vanilla/app.js examples/vanilla/demo-api.js examples/vanilla/templates.js examples/vanilla/vite.config.js examples/vanilla/scripts/check-style-parity.mjs examples/vanilla/scripts/sync-sdk.mjs vite.config.ts vitest.config.ts eslint.config.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "prepublishOnly": "npm run validate",
     "validate": "npm run test && npm run typecheck && npm run lint && npm run format:check && npm run build",
     "report:preview:generate": "npm run build && node scripts/generate-report-preview.mjs",
     "report:preview": "npm run report:preview:generate && vite .artifacts/report-preview --host 127.0.0.1 --port 4175",

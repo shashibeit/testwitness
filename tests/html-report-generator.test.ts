@@ -202,6 +202,27 @@ describe('escapeHtml', () => {
 });
 
 describe('HtmlReportGenerator', () => {
+  it('renders and escapes adapter-specific capture-health warning details', () => {
+    const summary = makeSummary();
+    summary.warnings = [
+      {
+        code: 'CAPTURE_GAP',
+        message: 'Capture <temporarily> interrupted',
+        timestamp: '2026-09-07T10:01:00.000Z',
+        source: 'extension<script>',
+        severity: 'error',
+      },
+    ];
+
+    const html = new HtmlReportGenerator().generate(makeEvidence(), summary, ASSETS);
+
+    expect(html).toContain('CAPTURE_GAP');
+    expect(html).toContain('Capture &lt;temporarily&gt; interrupted');
+    expect(html).toContain('extension&lt;script&gt;');
+    expect(html).toContain('<dd>error</dd>');
+    expect(html).not.toContain('extension<script>');
+  });
+
   it('renders the decision summary, evidence explorer, endpoint analysis, and ZIP-local media', () => {
     const html = new HtmlReportGenerator().generate(makeEvidence(), makeSummary(), ASSETS);
 

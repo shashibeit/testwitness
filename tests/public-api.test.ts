@@ -128,6 +128,71 @@ describe('public API', () => {
     expect(witness.getSessionStatus()).toBe('idle');
   });
 
+  it.each([
+    ['nested object', { nested: { accessToken: 'must-not-leak' } }],
+    ['nested array', { nested: ['must-not-leak'] }],
+    ['custom array', ['must-not-leak']],
+    ['non-finite number', { build: Number.POSITIVE_INFINITY }],
+    ['undefined', { build: undefined }],
+    ['bigint', { build: 42n }],
+  ])('rejects %s custom metadata supplied through untyped JavaScript', async (_label, custom) => {
+    const witness = createWitness();
+    await witness.initialize();
+
+    await expect(
+      witness.startSession({ custom } as unknown as Parameters<TestWitness['startSession']>[0]),
+    ).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
+    expect(witness.getSessionStatus()).toBe('idle');
+  });
+
+  it('sanitizes custom metadata keys and scalar string values', async () => {
+    const witness = createWitness();
+    await witness.initialize();
+
+    await witness.startSession({
+      custom: {
+        'build Bearer opaque': 'release candidate',
+        description: 'authorization=top-secret',
+        release: 42,
+        approved: true,
+        optional: null,
+      },
+    });
+    const result = await witness.stopSession();
+
+    expect(result.metadata.custom).toEqual({
+      'build Bearer [REDACTED]': 'release candidate',
+      description: 'authorization=[REDACTED]',
+      release: 42,
+      approved: true,
+      optional: null,
+    });
+  });
+
+  it('rejects unreadable and prototype-mutating custom metadata without starting', async () => {
+    const witness = createWitness();
+    await witness.initialize();
+    const unreadable = new Proxy(
+      {},
+      {
+        ownKeys: () => {
+          throw new Error('blocked');
+        },
+      },
+    );
+
+    await expect(witness.startSession({ custom: unreadable })).rejects.toMatchObject({
+      code: 'INVALID_CONFIG',
+    });
+    expect(witness.getSessionStatus()).toBe('idle');
+
+    const prototypeKey = JSON.parse('{"__proto__":"value"}') as Record<string, string>;
+    await expect(witness.startSession({ custom: prototypeKey })).rejects.toMatchObject({
+      code: 'INVALID_CONFIG',
+    });
+    expect(witness.getSessionStatus()).toBe('idle');
+  });
+
   it('prevents simultaneous sessions across TestWitness instances', async () => {
     const first = createWitness();
     const second = createWitness();

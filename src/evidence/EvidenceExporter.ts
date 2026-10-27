@@ -3,7 +3,12 @@ import JSZip from 'jszip';
 import { HtmlReportGenerator, type ReportAssetManifest } from './HtmlReportGenerator';
 import type { EvidenceSnapshot } from './EvidenceStore';
 import type { ResolvedTestWitnessConfig } from '../types/config';
-import type { DownloadEvidenceResult, SessionSummary } from '../types/session';
+import type {
+  DownloadEvidenceResult,
+  EvidenceCounts,
+  SessionResultStatus,
+  SessionSummary,
+} from '../types/session';
 import { TestWitnessError } from '../utils/errors';
 
 const ZIP_MIME_TYPE = 'application/zip';
@@ -11,6 +16,44 @@ const ZIP_ENTRY_DATE = new Date('2000-01-01T00:00:00.000Z');
 const DOWNLOAD_REVOKE_DELAY_MS = 0;
 const MAX_ARCHIVE_NAME_LENGTH = 180;
 const MAX_ASSET_BASE_LENGTH = 96;
+
+export const EVIDENCE_ARCHIVE_SCHEMA_VERSION = 1 as const;
+
+/** Machine-readable description of a TestWitness evidence archive. */
+export interface EvidenceArchiveManifest {
+  schemaVersion: typeof EVIDENCE_ARCHIVE_SCHEMA_VERSION;
+  format: 'testwitness-evidence';
+  producer: {
+    name: 'TestWitness';
+    libraryVersion: string;
+  };
+  session: {
+    id: string;
+    result: SessionResultStatus;
+    startedAt: string;
+    endedAt?: string;
+    exportedAt: string;
+  };
+  inclusion: {
+    htmlReport: boolean;
+    jsonReport: boolean;
+    video: boolean;
+  };
+  counts: EvidenceCounts;
+  captureWarningCount: number;
+  files: {
+    manifest: 'evidence-manifest.json';
+    metadata: 'metadata.json';
+    report?: 'report.html';
+    actions?: 'actions.json';
+    consoleLogs?: 'console-logs.json';
+    networkRequests?: 'network-requests.json';
+    networkErrors?: 'network-errors.json';
+    notes?: 'notes.json';
+    video?: 'recording.webm';
+    screenshots: Record<string, string>;
+  };
+}
 
 const TEXT_FILE_OPTIONS: JSZip.JSZipFileOptions = Object.freeze({
   binary: false,
@@ -41,6 +84,8 @@ export interface EvidenceExporterDependencies {
   document?: Document;
   url?: ObjectUrlApi;
   timer?: ExportTimer;
+  /** Injectable export clock for deterministic tests and host-controlled timestamps. */
+  now?: () => Date;
 }
 
 interface ScreenshotAsset {
@@ -204,6 +249,78 @@ function prepareAssets(evidence: EvidenceSnapshot): PreparedAssets {
   return { manifest: Object.freeze(manifest), screenshots };
 }
 
+function exportTimestamp(now: () => Date): string {
+  const timestamp = now();
+  if (!(timestamp instanceof Date) || !Number.isFinite(timestamp.getTime())) {
+    throw new TestWitnessError(
+      'EXPORT_FAILED',
+      'The evidence export clock returned an invalid date.',
+    );
+  }
+  return timestamp.toISOString();
+}
+
+function createArchiveManifest(
+  evidence: EvidenceSnapshot,
+  summary: SessionSummary,
+  assets: PreparedAssets,
+  config: ResolvedTestWitnessConfig['export'],
+  exportedAt: string,
+): EvidenceArchiveManifest {
+  const jsonFiles = config.includeJsonReport
+    ? {
+        actions: 'actions.json' as const,
+        consoleLogs: 'console-logs.json' as const,
+        networkRequests: 'network-requests.json' as const,
+        networkErrors: 'network-errors.json' as const,
+        notes: 'notes.json' as const,
+      }
+    : {};
+  const files: EvidenceArchiveManifest['files'] = {
+    manifest: 'evidence-manifest.json',
+    metadata: 'metadata.json',
+    ...(config.includeHtmlReport ? { report: 'report.html' as const } : {}),
+    ...jsonFiles,
+    ...(evidence.video ? { video: 'recording.webm' as const } : {}),
+    screenshots: { ...assets.manifest.screenshots },
+  };
+
+  return {
+    schemaVersion: EVIDENCE_ARCHIVE_SCHEMA_VERSION,
+    format: 'testwitness-evidence',
+    producer: {
+      name: 'TestWitness',
+      libraryVersion: evidence.metadata.libraryVersion,
+    },
+    session: {
+      id: evidence.metadata.sessionId,
+      result: evidence.metadata.result,
+      startedAt: evidence.metadata.startedAt,
+      ...(evidence.metadata.endedAt ? { endedAt: evidence.metadata.endedAt } : {}),
+      exportedAt,
+    },
+    inclusion: {
+      htmlReport: config.includeHtmlReport,
+      jsonReport: config.includeJsonReport,
+      video: Boolean(evidence.video),
+    },
+    counts: {
+      screenshots: evidence.screenshots.length,
+      actions: evidence.actions.length,
+      consoleLogs: evidence.consoleLogs.length,
+      networkRequests: evidence.networkRequests.length,
+      successfulRequests: evidence.networkRequests.filter(
+        (request) => request.outcome === 'success',
+      ).length,
+      networkErrors: evidence.networkErrors.length,
+      notes: evidence.notes.length,
+      hasVideo: Boolean(evidence.video),
+    },
+    captureWarningCount: summary.warnings.length,
+    files,
+  };
+}
+
 function normalizeJson(value: unknown, seen: WeakSet<object>): NormalizedJsonValue {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
@@ -292,6 +409,7 @@ export class EvidenceExporter {
   readonly #document?: Document;
   readonly #url?: ObjectUrlApi;
   readonly #timer: ExportTimer;
+  readonly #now: () => Date;
 
   public constructor(
     config: ResolvedTestWitnessConfig['export'],
@@ -302,6 +420,7 @@ export class EvidenceExporter {
     this.#document = dependencies.document ?? defaultDocument();
     this.#url = dependencies.url ?? defaultObjectUrlApi();
     this.#timer = dependencies.timer ?? defaultTimer();
+    this.#now = dependencies.now ?? (() => new Date());
   }
 
   public async generate(
@@ -311,6 +430,15 @@ export class EvidenceExporter {
     try {
       const zip = new JSZip();
       const assets = prepareAssets(evidence);
+      const archiveManifest = createArchiveManifest(
+        evidence,
+        summary,
+        assets,
+        this.#config,
+        exportTimestamp(this.#now),
+      );
+
+      addTextFile(zip, 'evidence-manifest.json', stableJson(archiveManifest));
 
       if (this.#config.includeHtmlReport) {
         addTextFile(

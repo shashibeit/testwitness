@@ -38,6 +38,17 @@ interface TestWitnessEvents {
   warning: SessionWarning;
 }
 
+type CustomMetadataValue = NonNullable<SessionStartMetadata['custom']>[string];
+
+function isCustomMetadataValue(value: unknown): value is CustomMetadataValue {
+  return (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'boolean' ||
+    (typeof value === 'number' && Number.isFinite(value))
+  );
+}
+
 function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -585,17 +596,65 @@ export class TestWitness {
     const sanitize = (value: string | undefined): string | undefined =>
       value === undefined ? undefined : this.#sanitizer.sanitizeText(value, 500);
     const custom: NonNullable<SessionStartMetadata['custom']> = {};
-    if (metadata.custom !== undefined) {
-      if (typeof metadata.custom !== 'object' || metadata.custom === null) {
+    let rawCustom: unknown;
+    try {
+      rawCustom = Reflect.get(metadata, 'custom');
+    } catch (error) {
+      throw new TestWitnessError(
+        'INVALID_CONFIG',
+        'Session custom metadata could not be read safely.',
+        error,
+      );
+    }
+    if (rawCustom !== undefined) {
+      if (typeof rawCustom !== 'object' || rawCustom === null || Array.isArray(rawCustom)) {
         throw new TestWitnessError('INVALID_CONFIG', 'Session custom metadata must be an object.');
       }
-      for (const [key, value] of Object.entries(metadata.custom)) {
-        const safeKey = this.#sanitizer.sanitizeText(key, 200);
-        custom[safeKey] = this.#sanitizer.isSensitiveFieldName(key)
+
+      let entries: Array<[string, unknown]>;
+      try {
+        entries = Object.entries(rawCustom);
+      } catch (error) {
+        throw new TestWitnessError(
+          'INVALID_CONFIG',
+          'Session custom metadata could not be read safely.',
+          error,
+        );
+      }
+
+      for (const [key, value] of entries) {
+        if (!isCustomMetadataValue(value)) {
+          throw new TestWitnessError(
+            'INVALID_CONFIG',
+            `Session custom metadata value for "${this.#sanitizer.sanitizeText(key, 200)}" must be a finite number, string, boolean, or null.`,
+          );
+        }
+
+        const safeKey = this.#sanitizer.sanitizeText(key, 200).trim();
+        if (!safeKey || safeKey === '__proto__') {
+          throw new TestWitnessError(
+            'INVALID_CONFIG',
+            'Session custom metadata contains an invalid property name.',
+          );
+        }
+        if (Object.prototype.hasOwnProperty.call(custom, safeKey)) {
+          throw new TestWitnessError(
+            'INVALID_CONFIG',
+            `Session custom metadata property "${safeKey}" is duplicated after sanitization.`,
+          );
+        }
+
+        const safeValue: CustomMetadataValue = this.#sanitizer.isSensitiveFieldName(key)
           ? '[REDACTED]'
           : typeof value === 'string'
             ? this.#sanitizer.sanitizeText(value, 1_000)
             : value;
+        Object.defineProperty(custom, safeKey, {
+          configurable: true,
+          enumerable: true,
+          value: safeValue,
+          writable: true,
+        });
       }
     }
     return {

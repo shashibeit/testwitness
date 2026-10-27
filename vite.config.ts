@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import dts from 'vite-plugin-dts';
+import packageJson from './package.json' with { type: 'json' };
 
 export default defineConfig({
   define: {
-    __TEST_WITNESS_VERSION__: JSON.stringify('0.1.0'),
+    __TEST_WITNESS_VERSION__: JSON.stringify(packageJson.version),
   },
   build: {
     lib: {

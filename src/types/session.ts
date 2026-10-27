@@ -87,7 +87,7 @@ export interface EvidenceCounts {
   hasVideo: boolean;
 }
 
-export type SessionWarningCode =
+export type KnownSessionWarningCode =
   | 'VIDEO_UNAVAILABLE'
   | 'VIDEO_ENDED'
   | 'CAPTURE_FAILED'
@@ -95,11 +95,23 @@ export type SessionWarningCode =
   | 'MEMORY_THRESHOLD_REACHED'
   | 'RECORDER_ERROR';
 
+/**
+ * Stable core warning codes plus platform-specific codes supplied by trusted
+ * adapters such as the browser extension.
+ */
+export type SessionWarningCode = KnownSessionWarningCode | (string & {});
+
+export type SessionWarningSeverity = 'info' | 'warning' | 'error';
+
 /** A recoverable problem that did not invalidate the rest of the evidence session. */
 export interface SessionWarning {
   code: SessionWarningCode;
   message: string;
   timestamp: string;
+  /** Component that observed the warning. Older consumers may omit this field. */
+  source?: string;
+  /** Advisory severity for report presentation and filtering. */
+  severity?: SessionWarningSeverity;
 }
 
 export interface SessionSummary {

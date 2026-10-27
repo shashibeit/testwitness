@@ -761,6 +761,8 @@ function buildExplorerItems(
       classNames: ['kind-capture-warning', 'is-warning', 'kind-issue'],
       body: definitionList([
         ['Warning code', escapeHtml(warning.code)],
+        ['Source', escapeHtml(warning.source ?? 'core')],
+        ['Severity', escapeHtml(warning.severity ?? 'warning')],
         ['Message', escapeHtml(warning.message)],
       ]),
     });
@@ -962,7 +964,7 @@ function renderWarnings(summary: SessionSummary): string {
   return `<ul class="warning-list">${summary.warnings
     .map(
       (warning) =>
-        `<li><strong>${escapeHtml(warning.code)}</strong> — ${escapeHtml(warning.message)} (${time(warning.timestamp)})</li>`,
+        `<li><strong>${escapeHtml(warning.code)}</strong> — ${escapeHtml(warning.message)} <span class="tag">${escapeHtml(warning.source ?? 'core')} · ${escapeHtml(warning.severity ?? 'warning')}</span> (${time(warning.timestamp)})</li>`,
     )
     .join('')}</ul>`;
 }

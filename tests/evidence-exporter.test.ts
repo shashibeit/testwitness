@@ -209,7 +209,10 @@ describe('EvidenceExporter ZIP generation', () => {
     const evidence = sessionEvidence();
     const summary = sessionSummary();
     const report = reportGenerator();
-    const exporter = new EvidenceExporter(EXPORT_CONFIG, { reportGenerator: report.generator });
+    const exporter = new EvidenceExporter(EXPORT_CONFIG, {
+      reportGenerator: report.generator,
+      now: () => new Date('2026-09-07T13:01:00.000Z'),
+    });
 
     const result = await exporter.generate(evidence, summary);
     const zip = await loadZip(result.blob);
@@ -219,6 +222,7 @@ describe('EvidenceExporter ZIP generation', () => {
     expect(Object.keys(zip.files).sort()).toEqual([
       'actions.json',
       'console-logs.json',
+      'evidence-manifest.json',
       'metadata.json',
       'network-errors.json',
       'network-requests.json',
@@ -244,6 +248,45 @@ describe('EvidenceExporter ZIP generation', () => {
     expect(JSON.parse((await zip.file('metadata.json')?.async('string')) ?? '')).toEqual(
       evidence.metadata,
     );
+    expect(JSON.parse((await zip.file('evidence-manifest.json')?.async('string')) ?? '')).toEqual({
+      schemaVersion: 1,
+      format: 'testwitness-evidence',
+      producer: { name: 'TestWitness', libraryVersion: '0.1.0' },
+      session: {
+        id: 'session-1',
+        result: 'passed',
+        startedAt: '2026-09-07T12:34:56.789Z',
+        endedAt: '2026-09-07T13:00:00.000Z',
+        exportedAt: '2026-09-07T13:01:00.000Z',
+      },
+      inclusion: { htmlReport: true, jsonReport: true, video: true },
+      counts: {
+        screenshots: 2,
+        actions: 1,
+        consoleLogs: 1,
+        networkRequests: 2,
+        successfulRequests: 1,
+        networkErrors: 1,
+        notes: 1,
+        hasVideo: true,
+      },
+      captureWarningCount: 0,
+      files: {
+        manifest: 'evidence-manifest.json',
+        metadata: 'metadata.json',
+        report: 'report.html',
+        actions: 'actions.json',
+        consoleLogs: 'console-logs.json',
+        networkRequests: 'network-requests.json',
+        networkErrors: 'network-errors.json',
+        notes: 'notes.json',
+        video: 'recording.webm',
+        screenshots: {
+          'screenshot-1': 'screenshots/001-Login-Evidence.png',
+          'screenshot-2': 'screenshots/001-login-evidence-2.png',
+        },
+      },
+    });
     expect(JSON.parse((await zip.file('actions.json')?.async('string')) ?? '')).toEqual(
       evidence.actions,
     );
@@ -281,14 +324,24 @@ describe('EvidenceExporter ZIP generation', () => {
 
     const zip = await loadZip((await exporter.generate(evidence, sessionSummary())).blob);
 
-    expect(Object.keys(zip.files)).toEqual(['metadata.json']);
+    expect(Object.keys(zip.files).sort()).toEqual(['evidence-manifest.json', 'metadata.json']);
     expect(report.generate).not.toHaveBeenCalled();
+    const manifest = JSON.parse(
+      (await zip.file('evidence-manifest.json')?.async('string')) ?? '',
+    ) as Record<string, unknown>;
+    expect(manifest).toMatchObject({
+      inclusion: { htmlReport: false, jsonReport: false, video: false },
+      files: { manifest: 'evidence-manifest.json', metadata: 'metadata.json', screenshots: {} },
+    });
   });
 
   it('produces deterministic bytes for the same evidence', async () => {
     const evidence = sessionEvidence();
     const report = reportGenerator();
-    const exporter = new EvidenceExporter(EXPORT_CONFIG, { reportGenerator: report.generator });
+    const exporter = new EvidenceExporter(EXPORT_CONFIG, {
+      reportGenerator: report.generator,
+      now: () => new Date('2026-09-07T13:01:00.000Z'),
+    });
 
     const first = await exporter.generate(evidence, sessionSummary());
     const second = await exporter.generate(evidence, sessionSummary());
@@ -314,6 +367,18 @@ describe('EvidenceExporter ZIP generation', () => {
     await expect(exporter.generate(evidence, sessionSummary())).rejects.toBeInstanceOf(
       TestWitnessError,
     );
+  });
+
+  it('rejects an invalid injected export clock with a typed error', async () => {
+    const exporter = new EvidenceExporter(EXPORT_CONFIG, {
+      reportGenerator: reportGenerator().generator,
+      now: () => new Date(Number.NaN),
+    });
+
+    await expect(exporter.generate(sessionEvidence(), sessionSummary())).rejects.toMatchObject({
+      code: 'EXPORT_FAILED',
+      message: 'The evidence export clock returned an invalid date.',
+    });
   });
 });
 
